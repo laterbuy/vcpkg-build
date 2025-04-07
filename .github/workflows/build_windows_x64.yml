@@ -1,0 +1,39 @@
+name: Build ffmpeg with x264
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    paths:
+      - 'build-ffmpeg.yml'  # 修改此文件时触发
+
+jobs:
+  build-ffmpeg:
+    runs-on: windows-latest  # 使用 Windows 环境
+    env:
+      VCPKG_DIR: ${{ github.workspace }}/vcpkg
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        ./bootstrap-vcpkg.bat -disableMetrics
+
+    - name: Install dependencies
+      run: |
+        cd $env:VCPKG_DIR
+        ./vcpkg install ffmpeg[nonfree,x264]:x64-windows
+
+    - name: Archive binaries
+      run: |
+        Compress-Archive -Path $env:VCPKG_DIR/installed/x64-windows/* `
+                         -DestinationPath ffmpeg-x64-windows.zip
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ffmpeg-x64-windows-package
+        path: ffmpeg-x64-windows.zip

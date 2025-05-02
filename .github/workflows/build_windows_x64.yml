@@ -72,7 +72,6 @@ jobs:
       shell: bash
       run: |
         mkdir output
-        cp /usr/local/bin/ffmpeg.exe output/
         cp /usr/local/bin/*.dll output/
         cd output
         7z a ../ffmpeg-windows-x64-x264.zip *

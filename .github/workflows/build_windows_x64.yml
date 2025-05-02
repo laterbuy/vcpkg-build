@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write  # 必须有，允许创建 tag 和 release
+
 jobs:
   build:
     runs-on: windows-latest
@@ -32,7 +35,7 @@ jobs:
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n6.1  # 可根据需要更换版本
+        git checkout n6.1
 
     - name: Configure FFmpeg (shared build, x264 only)
       shell: msys2 {0}
@@ -69,23 +72,31 @@ jobs:
         cp /usr/local/bin/ffmpeg.exe output/
         cp /usr/local/bin/*.dll output/
 
-    - name: Compress to zip (Windows native shell)
+    - name: Compress to zip
       shell: bash
       run: |
         7z a ffmpeg-windows-x64-x264.zip ./output/*
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ffmpeg-windows-x64-x264
-        path: ffmpeg-windows-x64-x264.zip
+    # ➕ 自动生成 Tag（如 v2025.05.02.001）
+    - name: Create tag name
+      id: tag
+      run: |
+        DATE_TAG="v$(date +'%Y.%m.%d').001"
+        echo "TAG_NAME=$DATE_TAG" >> $GITHUB_ENV
+        echo "::set-output name=tag::$DATE_TAG"
 
-    - name: Upload to GitHub Release
-      if: github.ref == 'refs/heads/main'
+    - name: Create Git Tag
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git tag ${{ steps.tag.outputs.tag }}
+        git push origin ${{ steps.tag.outputs.tag }}
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: latest
-        name: FFmpeg Windows x264 Build (Dynamic)
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: Release ${{ steps.tag.outputs.tag }}
         files: ffmpeg-windows-x64-x264.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

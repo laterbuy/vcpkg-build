@@ -32,7 +32,7 @@ jobs:
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n6.1  # 可选，锁定版本
+        git checkout n6.1  # 可根据需要更换版本
 
     - name: Configure FFmpeg (shared build, x264 only)
       shell: msys2 {0}
@@ -43,52 +43,4 @@ jobs:
                     --arch=x86_64 \
                     --enable-gpl \
                     --enable-libx264 \
-                    --disable-everything \
-                    --enable-encoder=libx264 \
-                    --enable-decoder=h264 \
-                    --enable-muxer=mp4 \
-                    --enable-demuxer=h264 \
-                    --enable-protocol=file \
-                    --enable-ffmpeg \
-                    --disable-ffplay \
-                    --disable-ffprobe \
-                    --enable-shared \
-                    --disable-static
-
-    - name: Build and install FFmpeg
-      shell: msys2 {0}
-      run: |
-        cd ffmpeg
-        make -j$(nproc)
-        make install
-
-    - name: Verify installed files
-      shell: msys2 {0}
-      run: |
-        echo "Installed files:"
-        ls /usr/local/bin
-
-    - name: Package ffmpeg.exe and DLLs
-      shell: msys2 {0}
-      run: |
-        mkdir output
-        cp /usr/local/bin/ffmpeg.exe output/
-        cp /usr/local/bin/*.dll output/
-        cd output
-        7z a ../ffmpeg-windows-x64-x264.zip *
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ffmpeg-windows-x64-x264
-        path: ffmpeg-windows-x64-x264.zip
-
-    - name: Upload to GitHub Release
-      if: github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: latest
-        name: FFmpeg Windows x264 Build (Dynamic)
-        files: ffmpeg-windows-x64-x264.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    --disable-every

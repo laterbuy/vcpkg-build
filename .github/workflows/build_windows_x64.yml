@@ -22,6 +22,12 @@ jobs:
           mingw-w64-x86_64-x264
           mingw-w64-x86_64-nasm
 
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ffmpeg-x264-binaries
+        path: ffmpeg-x264.zip
+
     - name: Configure environment
       shell: msys2 {0}
       run: |

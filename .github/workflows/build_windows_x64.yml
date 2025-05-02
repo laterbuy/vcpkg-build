@@ -43,4 +43,49 @@ jobs:
                     --arch=x86_64 \
                     --enable-gpl \
                     --enable-libx264 \
-                    --disable-every
+                    --disable-everything \
+                    --enable-encoder=libx264 \
+                    --enable-decoder=h264 \
+                    --enable-muxer=mp4 \
+                    --enable-demuxer=h264 \
+                    --enable-protocol=file \
+                    --enable-ffmpeg \
+                    --disable-ffplay \
+                    --disable-ffprobe \
+                    --enable-shared \
+                    --disable-static
+
+    - name: Build and install FFmpeg
+      shell: msys2 {0}
+      run: |
+        cd ffmpeg
+        make -j$(nproc)
+        make install
+
+    - name: Copy output files
+      shell: msys2 {0}
+      run: |
+        mkdir -p output
+        cp /usr/local/bin/ffmpeg.exe output/
+        cp /usr/local/bin/*.dll output/
+
+    - name: Compress to zip (Windows native shell)
+      shell: bash
+      run: |
+        7z a ffmpeg-windows-x64-x264.zip ./output/*
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-windows-x64-x264
+        path: ffmpeg-windows-x64-x264.zip
+
+    - name: Upload to GitHub Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: FFmpeg Windows x264 Build (Dynamic)
+        files: ffmpeg-windows-x64-x264.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

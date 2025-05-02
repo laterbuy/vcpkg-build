@@ -6,14 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 用于创建 tag 和 release
+  contents: write  # 必须授权写权限才能发布 Release
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout source
       uses: actions/checkout@v4
 
     - name: Set up MSYS2
@@ -37,7 +37,7 @@ jobs:
         cd ffmpeg
         git checkout n6.1
 
-    - name: Configure FFmpeg (shared build, x264 only)
+    - name: Configure FFmpeg (shared, x264 only)
       shell: msys2 {0}
       run: |
         cd ffmpeg
@@ -58,14 +58,14 @@ jobs:
                     --enable-shared \
                     --disable-static
 
-    - name: Build and install FFmpeg
+    - name: Build and install
       shell: msys2 {0}
       run: |
         cd ffmpeg
         make -j$(nproc)
         make install
 
-    - name: Prepare full FFmpeg package
+    - name: Prepare output
       shell: msys2 {0}
       run: |
         mkdir -p ffmpeg-package
@@ -81,12 +81,17 @@ jobs:
       run: |
         7z a ffmpeg-windows-x64-x264.zip ./ffmpeg-package/*
 
-    - name: Create tag name
+    - name: Generate unique tag
       id: tag
       shell: bash
       run: |
-        DATE_TAG="v$(date +'%Y.%m.%d').001"
-        echo "tag=$DATE_TAG" >> $GITHUB_OUTPUT
+        base="v$(date +'%Y.%m.%d')"
+        n=1
+        while git ls-remote --exit-code --tags origin "$base.$(printf '%03d' $n)" &> /dev/null; do
+          n=$((n + 1))
+        done
+        tag="$base.$(printf '%03d' $n)"
+        echo "tag=$tag" >> $GITHUB_OUTPUT
 
     - name: Create Git Tag
       shell: bash
@@ -100,7 +105,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.tag }}
-        name: Release ${{ steps.tag.outputs.tag }}
+        name: FFmpeg Release ${{ steps.tag.outputs.tag }}
         files: ffmpeg-windows-x64-x264.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

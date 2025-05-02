@@ -38,7 +38,7 @@ jobs:
       shell: msys2 {0}
       run: |
         cd ffmpeg
-        ./configure --prefix=/mingw64 \
+        ./configure --prefix=/usr/local \
                     --target-os=mingw32 \
                     --arch=x86_64 \
                     --enable-gpl \
@@ -62,12 +62,18 @@ jobs:
         make -j$(nproc)
         make install
 
+    - name: Verify installation path
+      shell: msys2 {0}
+      run: |
+        echo "Installed files:"
+        ls /usr/local/bin
+
     - name: Package ffmpeg.exe and DLLs
       shell: bash
       run: |
         mkdir output
-        cp /mingw64/bin/ffmpeg.exe output/
-        cp /mingw64/bin/*.dll output/
+        cp /usr/local/bin/ffmpeg.exe output/
+        cp /usr/local/bin/*.dll output/
         cd output
         7z a ../ffmpeg-windows-x64-x264.zip *
 

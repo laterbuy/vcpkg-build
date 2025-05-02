@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 关键：允许创建 tag 和 release
+  contents: write  # 用于创建 tag 和 release
 
 jobs:
   build:
@@ -65,17 +65,21 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Copy output files
+    - name: Prepare full FFmpeg package
       shell: msys2 {0}
       run: |
-        mkdir -p output
-        cp /usr/local/bin/ffmpeg.exe output/
-        cp /usr/local/bin/*.dll output/
+        mkdir -p ffmpeg-package
+        cp -r /usr/local/bin ffmpeg-package/
+        cp -r /usr/local/include ffmpeg-package/
+        cp -r /usr/local/lib ffmpeg-package/
+        if [ -d /usr/local/share/ffmpeg ]; then
+          cp -r /usr/local/share/ffmpeg ffmpeg-package/presets
+        fi
 
     - name: Compress to zip
       shell: bash
       run: |
-        7z a ffmpeg-windows-x64-x264.zip ./output/*
+        7z a ffmpeg-windows-x64-x264.zip ./ffmpeg-package/*
 
     - name: Create tag name
       id: tag

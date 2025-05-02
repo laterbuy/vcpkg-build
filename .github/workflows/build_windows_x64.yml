@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 必须有，允许创建 tag 和 release
+  contents: write  # 关键：允许创建 tag 和 release
 
 jobs:
   build:
@@ -77,15 +77,15 @@ jobs:
       run: |
         7z a ffmpeg-windows-x64-x264.zip ./output/*
 
-    # ➕ 自动生成 Tag（如 v2025.05.02.001）
     - name: Create tag name
       id: tag
+      shell: bash
       run: |
         DATE_TAG="v$(date +'%Y.%m.%d').001"
-        echo "TAG_NAME=$DATE_TAG" >> $GITHUB_ENV
-        echo "::set-output name=tag::$DATE_TAG"
+        echo "tag=$DATE_TAG" >> $GITHUB_OUTPUT
 
     - name: Create Git Tag
+      shell: bash
       run: |
         git config user.name "github-actions"
         git config user.email "github-actions@github.com"

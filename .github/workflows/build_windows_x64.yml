@@ -32,7 +32,7 @@ jobs:
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n6.1  # 可选：锁定版本
+        git checkout n6.1  # 可选，锁定版本
 
     - name: Configure FFmpeg (shared build, x264 only)
       shell: msys2 {0}
@@ -62,16 +62,17 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Verify installation path
+    - name: Verify installed files
       shell: msys2 {0}
       run: |
         echo "Installed files:"
         ls /usr/local/bin
 
     - name: Package ffmpeg.exe and DLLs
-      shell: bash
+      shell: msys2 {0}
       run: |
         mkdir output
+        cp /usr/local/bin/ffmpeg.exe output/
         cp /usr/local/bin/*.dll output/
         cd output
         7z a ../ffmpeg-windows-x64-x264.zip *

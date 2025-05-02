@@ -1,4 +1,4 @@
-name: Build FFmpeg with x264
+name: Build FFmpeg with x264 (Windows, dynamic)
 
 on:
   push:
@@ -10,75 +10,79 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4  # 更新到最新版本
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up MSYS2
       uses: msys2/setup-msys2@v2
       with:
         update: true
         install: >-
+          base-devel
+          git
           mingw-w64-x86_64-toolchain
+          nasm
+          yasm
+          make
+          pkg-config
           mingw-w64-x86_64-x264
-          mingw-w64-x86_64-nasm
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ffmpeg-x264-binaries
-        path: ffmpeg-x264.zip
-
-    - name: Configure environment
+    - name: Clone FFmpeg
       shell: msys2 {0}
       run: |
-        echo "PATH=$PATH:/mingw64/bin" >> $GITHUB_ENV
+        git clone https://git.ffmpeg.org/ffmpeg.git
+        cd ffmpeg
+        git checkout n6.1  # 可选：锁定版本
 
-    - name: Download FFmpeg source
-      shell: bash
-      run: |
-        curl -L https://ffmpeg.org/releases/ffmpeg-snapshot.tar.bz2 -o ffmpeg.tar.bz2
-        tar -xjf ffmpeg.tar.bz2
-
-    - name: Configure FFmpeg
+    - name: Configure FFmpeg (shared build, x264 only)
       shell: msys2 {0}
       run: |
         cd ffmpeg
-        ./configure \
-          --prefix=/mingw64/ffmpeg-build \
-          --arch=x86_64 \
-          --target-os=mingw32 \
-          --enable-gpl \
-          --enable-libx264 \
-          --enable-static \
-          --disable-shared \
-          --disable-programs \
-          --disable-doc \
-          --extra-cflags="-I/mingw64/include" \
-          --extra-ldflags="-L/mingw64/lib"
+        ./configure --prefix=/mingw64 \
+                    --target-os=mingw32 \
+                    --arch=x86_64 \
+                    --enable-gpl \
+                    --enable-libx264 \
+                    --disable-everything \
+                    --enable-encoder=libx264 \
+                    --enable-decoder=h264 \
+                    --enable-muxer=mp4 \
+                    --enable-demuxer=h264 \
+                    --enable-protocol=file \
+                    --enable-ffmpeg \
+                    --disable-ffplay \
+                    --disable-ffprobe \
+                    --enable-shared \
+                    --disable-static
 
-    - name: Build and install
+    - name: Build and install FFmpeg
       shell: msys2 {0}
       run: |
         cd ffmpeg
         make -j$(nproc)
         make install
 
-    - name: Package binaries
-      shell: cmd
+    - name: Package ffmpeg.exe and DLLs
+      shell: bash
       run: |
-        7z a -tzip ffmpeg-x264.zip "%MSYS2_PATH%\mingw64\ffmpeg-build\bin\*"
+        mkdir output
+        cp /mingw64/bin/ffmpeg.exe output/
+        cp /mingw64/bin/*.dll output/
+        cd output
+        7z a ../ffmpeg-windows-x64-x264.zip *
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: ffmpeg-x264-binaries
-        path: ffmpeg-x264.zip
+        name: ffmpeg-windows-x64-x264
+        path: ffmpeg-windows-x64-x264.zip
 
-    # 可选：自动创建 Release 并上传
-    # - name: Create Release
-    #   uses: softprops/action-gh-release@v1
-    #   with:
-    #     files: ffmpeg-x264.zip
-    #     draft: false
-    #   env:
-    #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload to GitHub Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: FFmpeg Windows x264 Build (Dynamic)
+        files: ffmpeg-windows-x64-x264.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

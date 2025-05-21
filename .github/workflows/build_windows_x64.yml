@@ -1,4 +1,4 @@
-name: Build FFmpeg with x264 (Windows & macOS, dynamic)
+name: Build FFmpeg with x264 (Windows, dynamic)
 
 on:
   push:
@@ -6,21 +6,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write  # 必须授权写权限才能发布 Release
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
+    runs-on: windows-latest
 
     steps:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Set up MSYS2 (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Set up MSYS2
       uses: msys2/setup-msys2@v2
       with:
         update: true
@@ -34,21 +30,14 @@ jobs:
           pkg-config
           mingw-w64-x86_64-x264
 
-    - name: Install dependencies (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew update
-        brew install git pkg-config nasm yasm x264
-
     - name: Clone FFmpeg
-      shell: bash
+      shell: msys2 {0}
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
         git checkout n7.1
 
-    - name: Configure FFmpeg (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: Configure FFmpeg (shared, x264 only)
       shell: msys2 {0}
       run: |
         cd ffmpeg
@@ -66,40 +55,18 @@ jobs:
                     --enable-ffmpeg \
                     --disable-ffplay \
                     --disable-ffprobe \
-                    --disable-doc \
                     --enable-shared \
                     --disable-static
 
-    - name: Configure FFmpeg (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        cd ffmpeg
-        ./configure --prefix=/usr/local \
-                    --arch=x86_64 \
-                    --enable-gpl \
-                    --enable-libx264 \
-                    --disable-everything \
-                    --enable-encoder=libx264 \
-                    --enable-decoder=h264 \
-                    --enable-muxer=mp4 \
-                    --enable-demuxer=h264 \
-                    --enable-protocol=file \
-                    --enable-ffmpeg \
-                    --disable-ffplay \
-                    --disable-ffprobe \
-                    --disable-doc \
-                    --enable-shared \
-                    --disable-static \
-                    --disable-mmx
-
     - name: Build and install
-      shell: bash
+      shell: msys2 {0}
       run: |
         cd ffmpeg
         make -j$(nproc)
-        sudo make install
+        make install
 
     - name: Prepare output
+      shell: msys2 {0}
       run: |
         mkdir -p ffmpeg-package
         cp -r /usr/local/bin ffmpeg-package/
@@ -110,8 +77,9 @@ jobs:
         fi
 
     - name: Compress to zip
+      shell: bash
       run: |
-        zip -r ffmpeg-${{ runner.os }}-x64-x264.zip ffmpeg-package
+        7z a ffmpeg-windows-x64-x264.zip ./ffmpeg-package/*
 
     - name: Generate unique tag
       id: tag
@@ -138,6 +106,6 @@ jobs:
       with:
         tag_name: ${{ steps.tag.outputs.tag }}
         name: FFmpeg Release ${{ steps.tag.outputs.tag }}
-        files: ffmpeg-${{ runner.os }}-x64-x264.zip
+        files: ffmpeg-windows-x64-x264.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

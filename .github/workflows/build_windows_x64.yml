@@ -29,21 +29,13 @@ jobs:
           make
           pkg-config
           mingw-w64-x86_64-x264
-          mingw-w64-x86_64-gcc10
-
-    - name: Set GCC 10 as default
-      shell: msys2 {0}
-      run: |
-        echo "export CC=x86_64-w64-mingw32-gcc-10" >> ~/.bashrc
-        echo "export CXX=x86_64-w64-mingw32-g++-10" >> ~/.bashrc
-        source ~/.bashrc
 
     - name: Clone FFmpeg
       shell: msys2 {0}
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n4.4.6
+        git checkout n7.1
 
     - name: Configure FFmpeg (shared, x264 only)
       shell: msys2 {0}

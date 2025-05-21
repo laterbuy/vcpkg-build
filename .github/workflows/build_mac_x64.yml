@@ -1,0 +1,95 @@
+name: Build FFmpeg with x264 (macOS, dynamic)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        brew update
+        brew install nasm pkg-config x264
+
+    - name: Clone FFmpeg
+      run: |
+        git clone https://git.ffmpeg.org/ffmpeg.git
+        cd ffmpeg
+        git checkout n7.1
+
+    - name: Configure FFmpeg (shared, x264 only)
+      run: |
+        cd ffmpeg
+        ./configure --prefix=/usr/local \
+                    --enable-gpl \
+                    --enable-libx264 \
+                    --disable-everything \
+                    --enable-encoder=libx264 \
+                    --enable-decoder=h264 \
+                    --enable-muxer=mp4 \
+                    --enable-demuxer=h264 \
+                    --enable-protocol=file \
+                    --enable-ffmpeg \
+                    --disable-ffplay \
+                    --disable-ffprobe \
+                    --disable-doc \
+                    --disable-mmx \
+                    --enable-shared \
+                    --disable-static
+
+    - name: Build and install
+      run: |
+        cd ffmpeg
+        make -j$(sysctl -n hw.ncpu)
+        make install
+
+    - name: Prepare output
+      run: |
+        mkdir -p ffmpeg-macos-package
+        cp -r /usr/local/bin ffmpeg-macos-package/
+        cp -r /usr/local/include ffmpeg-macos-package/
+        cp -r /usr/local/lib ffmpeg-macos-package/
+        if [ -d /usr/local/share/ffmpeg ]; then
+          cp -r /usr/local/share/ffmpeg ffmpeg-macos-package/presets
+        fi
+
+    - name: Compress to zip
+      run: |
+        ditto -c -k --sequesterRsrc --keepParent ffmpeg-macos-package ffmpeg-macos-x64-x264.zip
+
+    - name: Generate unique tag
+      id: tag
+      run: |
+        base="v$(date +'%Y.%m.%d')"
+        n=1
+        while git ls-remote --exit-code --tags origin "$base.$(printf '%03d' $n)" &> /dev/null; do
+          n=$((n + 1))
+        done
+        tag="$base.$(printf '%03d' $n)"
+        echo "tag=$tag" >> $GITHUB_OUTPUT
+
+    - name: Create Git Tag
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git tag ${{ steps.tag.outputs.tag }}
+        git push origin ${{ steps.tag.outputs.tag }}
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: FFmpeg macOS Release ${{ steps.tag.outputs.tag }}
+        files: ffmpeg-macos-x64-x264.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -55,7 +55,7 @@ jobs:
                     --enable-ffmpeg \
                     --disable-ffplay \
                     --disable-ffprobe \
-                    -disable-doc \     # 跳过文档构建，防止 Texinfo 报错
+                    --disable-doc \     # 跳过文档构建，防止 Texinfo 报错
                     --enable-shared \
                     --disable-static
 

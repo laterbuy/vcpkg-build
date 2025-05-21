@@ -89,7 +89,8 @@ jobs:
                     --disable-ffprobe \
                     --disable-doc \
                     --enable-shared \
-                    --disable-static
+                    --disable-static \
+                    --disable-mmx
 
     - name: Build and install
       shell: bash

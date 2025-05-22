@@ -41,35 +41,32 @@ jobs:
         git checkout n4.4.6
 
     - name: Configure FFmpeg with MSVC environment
-      shell: cmd
+      shell: bash
       run: |
-        REM 加载 Visual Studio MSVC 编译环境 (路径根据你使用的 VS 版本调整)
-        call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-
-        REM 设置vcpkg路径变量，改成你的路径
-        set VCPKG_PATH=%GITHUB_WORKSPACE%\vcpkg
-        set PATH=%VCPKG_PATH%\installed\x64-windows\bin;%PATH%
-        set INCLUDE=%VCPKG_PATH%\installed\x64-windows\include;%INCLUDE%
-        set LIB=%VCPKG_PATH%\installed\x64-windows\lib;%LIB%
-
-        REM 在加载MSVC环境的cmd中调用bash的configure，确保cl.exe可用
-        bash -c "cd ffmpeg && ./configure --toolchain=msvc \
-          --prefix=$GITHUB_WORKSPACE/ffmpeg-install \
-          --target-os=win64 \
-          --arch=x86_64 \
-          --enable-gpl \
-          --enable-libx264 \
-          --disable-everything \
-          --enable-encoder=libx264 \
-          --enable-decoder=h264 \
-          --enable-muxer=mp4 \
-          --enable-demuxer=h264 \
-          --enable-protocol=file \
-          --enable-ffmpeg \
-          --disable-ffplay \
-          --disable-ffprobe \
-          --enable-shared \
-          --disable-static"
+          # 加载 MSVC 环境变量（用 call 需适配 bash 路径或用 vsdevcmd）
+          "/c/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat"
+          export VCPKG_PATH="${GITHUB_WORKSPACE}/vcpkg"
+          export PATH="$VCPKG_PATH/installed/x64-windows/bin:$PATH"
+          export INCLUDE="$VCPKG_PATH/installed/x64-windows/include:$INCLUDE"
+          export LIB="$VCPKG_PATH/installed/x64-windows/lib:$LIB"
+          cd ffmpeg
+          ./configure --toolchain=msvc \
+            --prefix=$GITHUB_WORKSPACE/ffmpeg-install \
+            --target-os=win64 \
+            --arch=x86_64 \
+            --enable-gpl \
+            --enable-libx264 \
+            --disable-everything \
+            --enable-encoder=libx264 \
+            --enable-decoder=h264 \
+            --enable-muxer=mp4 \
+            --enable-demuxer=h264 \
+            --enable-protocol=file \
+            --enable-ffmpeg \
+            --disable-ffplay \
+            --disable-ffprobe \
+            --enable-shared \
+            --disable-static
 
     - name: Build FFmpeg with MSVC
       shell: cmd

@@ -1,4 +1,4 @@
-name: Build FFmpeg with x264 (Windows, dynamic)
+name: Build FFmpeg with x264 (MSVC, dynamic)
 
 on:
   push:
@@ -16,74 +16,65 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Set up MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        update: true
-        install: >-
-          base-devel
-          git
-          mingw-w64-x86_64-toolchain
-          nasm
-          yasm
-          make
-          pkg-config
-          mingw-w64-x86_64-x264
-          mingw-w64-x86_64-lzo2
+    - name: Install dependencies
+      run: |
+        choco install -y ninja cmake 7zip
+
+    - name: Clone vcpkg
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git
+        cd vcpkg
+        .\bootstrap-vcpkg.bat
+
+    - name: Install x264 with vcpkg
+      run: |
+        cd vcpkg
+        .\vcpkg install x264:x64-windows
+        echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\\vcpkg" >> $env:GITHUB_ENV
+        echo "$env:GITHUB_WORKSPACE\\vcpkg" >> $env:GITHUB_PATH
 
     - name: Clone FFmpeg
-      shell: msys2 {0}
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
         git checkout n4.4.6
 
-    - name: Configure FFmpeg (shared, x264 only)
-      shell: msys2 {0}
+    - name: Configure FFmpeg
+      shell: cmd
       run: |
         cd ffmpeg
-        export CFLAGS="-D__MINGW_USE_VC2005_COMPAT"
-        export CXXFLAGS="-D__MINGW_USE_VC2005_COMPAT"
-        ./configure --prefix=/usr/local \
-                    --target-os=mingw32 \
-                    --arch=x86_64 \
-                    --enable-gpl \
-                    --enable-libx264 \
-                    --disable-everything \
-                    --enable-encoder=libx264 \
-                    --enable-decoder=h264 \
-                    --enable-muxer=mp4 \
-                    --enable-demuxer=h264 \
-                    --enable-protocol=file \
-                    --enable-ffmpeg \
-                    --disable-ffplay \
-                    --disable-ffprobe \
-                    --disable-doc \
-                    --enable-shared \
-                    --disable-static
+        set VCPKG_PATH=%GITHUB_WORKSPACE%\vcpkg
+        set PATH=%VCPKG_PATH%\installed\x64-windows\bin;%PATH%
+        set INCLUDE=%VCPKG_PATH%\installed\x64-windows\include;%INCLUDE%
+        set LIB=%VCPKG_PATH%\installed\x64-windows\lib;%LIB%
+        call configure --toolchain=msvc \
+                       --prefix=../ffmpeg-install \
+                       --target-os=win64 \
+                       --arch=x86_64 \
+                       --enable-gpl \
+                       --enable-libx264 \
+                       --disable-everything \
+                       --enable-encoder=libx264 \
+                       --enable-decoder=h264 \
+                       --enable-muxer=mp4 \
+                       --enable-demuxer=h264 \
+                       --enable-protocol=file \
+                       --enable-ffmpeg \
+                       --disable-ffplay \
+                       --disable-ffprobe \
+                       --enable-shared \
+                       --disable-static
 
-    - name: Build and install
-      shell: msys2 {0}
+    - name: Build FFmpeg with MSVC
+      shell: cmd
       run: |
         cd ffmpeg
-        make -j$(nproc)
-        make install
+        nmake
+        nmake install
 
-    - name: Prepare output
-      shell: msys2 {0}
+    - name: Package
       run: |
-        mkdir -p ffmpeg-package
-        cp -r /usr/local/bin ffmpeg-package/
-        cp -r /usr/local/include ffmpeg-package/
-        cp -r /usr/local/lib ffmpeg-package/
-        if [ -d /usr/local/share/ffmpeg ]; then
-          cp -r /usr/local/share/ffmpeg ffmpeg-package/presets
-        fi
-
-    - name: Compress to zip
-      shell: bash
-      run: |
-        7z a ffmpeg-windows-x64-x264.zip ./ffmpeg-package/*
+        7z a ffmpeg-windows-msvc-x64.zip .\ffmpeg-install\*
 
     - name: Generate unique tag
       id: tag
@@ -105,11 +96,11 @@ jobs:
         git tag ${{ steps.tag.outputs.tag }}
         git push origin ${{ steps.tag.outputs.tag }}
 
-    - name: Create GitHub Release
+    - name: Upload Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.tag }}
-        name: FFmpeg Release ${{ steps.tag.outputs.tag }}
-        files: ffmpeg-windows-x64-x264.zip
+        name: FFmpeg MSVC Release ${{ steps.tag.outputs.tag }}
+        files: ffmpeg-windows-msvc-x64.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30,7 +30,8 @@ jobs:
     - name: Configure FFmpeg (shared, x264 only)
       run: |
         cd ffmpeg
-        ./configure --prefix=/usr/local \
+        mkdir ../ffmpeg-install
+        ./configure --prefix=$(pwd)/../ffmpeg-install \
                     --enable-gpl \
                     --enable-libx264 \
                     --disable-everything \
@@ -53,15 +54,16 @@ jobs:
         make -j$(sysctl -n hw.ncpu)
         make install
 
+    - name: Verify x264 linkage
+      run: |
+        otool -L ffmpeg-install/bin/ffmpeg | grep x264 || echo "❌ x264 not linked"
+
     - name: Prepare output
       run: |
         mkdir -p ffmpeg-macos-package
-        cp -r /usr/local/bin ffmpeg-macos-package/
-        cp -r /usr/local/include ffmpeg-macos-package/
-        cp -r /usr/local/lib ffmpeg-macos-package/
-        if [ -d /usr/local/share/ffmpeg ]; then
-          cp -r /usr/local/share/ffmpeg ffmpeg-macos-package/presets
-        fi
+        cp -r ffmpeg-install/bin ffmpeg-macos-package/
+        cp -r ffmpeg-install/include ffmpeg-macos-package/
+        cp -r ffmpeg-install/lib ffmpeg-macos-package/
 
     - name: Compress to zip
       run: |

@@ -57,7 +57,9 @@ jobs:
                     --disable-ffprobe \
                     --enable-shared \
                     --disable-static \
-                    --disable-doc
+                    --disable-doc \
+                    --extra-cflags="-D__USE_MINGW_ANSI_STDIO=1 -U__STRICT_ANSI__" \
+                    --extra-ldflags="-static-libgcc -static-libstdc++"
 
     - name: Build and install
       shell: msys2 {0}

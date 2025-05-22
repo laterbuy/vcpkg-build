@@ -1,8 +1,6 @@
 name: Build FFmpeg with x264 (macOS, dynamic)
 
 on:
-  push:
-    branches: [ ]
   workflow_dispatch:
 
 permissions:

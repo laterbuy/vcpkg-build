@@ -56,7 +56,8 @@ jobs:
                     --disable-ffplay \
                     --disable-ffprobe \
                     --enable-shared \
-                    --disable-static
+                    --disable-static \
+                    --disable-doc
 
     - name: Build and install
       shell: msys2 {0}

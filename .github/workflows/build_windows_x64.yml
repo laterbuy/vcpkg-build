@@ -1,114 +1,93 @@
-name: build_windows_h264_dynamic
+name: build_h264
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Clone x264
-        run: git clone -b 0.164.r3101 --depth=1 https://github.com/ShiftMediaProject/x264.git ./source/x264
+    - name: Clone x264
+      run: |
+        git clone -b 0.164.r3101 --depth=1 https://github.com/ShiftMediaProject/x264.git ./source/x264
+    - name: Get x264 Git Tag
+      working-directory: ./source/x264
+      run: echo "X264_GIT_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Clone AMF
-        run: git clone -b v1.4.26 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git ./source/amf
+    - name: Clone FFmpeg
+      run: |
+        git clone -b release/5.1 --depth=1 https://git.ffmpeg.org/ffmpeg.git ./source/ffmpeg
+    - name: Get FFmpeg Git Tag
+      working-directory: ./source/ffmpeg
+      run: echo "FFMPEG_GIT_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Clone mfx_dispatch
-        run: git clone -b 1.35.r89 https://github.com/ShiftMediaProject/mfx_dispatch.git ./source/mfx_dispatch
+    - name: Clone vsnasm
+      run: |
+        git clone -b 0.8 https://github.com/ShiftMediaProject/VSNASM.git ./vsnasm
+    - name: Setup VSNASM
+      working-directory: ./vsnasm
+      run: |
+        ./install_script.bat
 
-      - name: Clone FFmpeg
-        run: git clone -b release/5.1 --depth=1 https://git.ffmpeg.org/ffmpeg.git ./source/ffmpeg
+    - name: Download FFVS-Project-Generator
+      uses: robinraju/release-downloader@v1.6
+      with:
+        repository: "ShiftMediaProject/FFVS-Project-Generator"
+        tag: "1.11.5"
+        fileName: "FFVS-Project-Generator_1.11.5_x64.zip"
+    - name: Unzip Project Generator
+      run: 7z x FFVS-Project-Generator_1.11.5_x64.zip
+    - name: Copy Generator to Source
+      run: Copy-Item -Path "project_generate.exe" -Destination "${{github.workspace}}\source\project_generate.exe" -Force
 
-      - name: Clone vsnasm
-        run: git clone -b 0.8 https://github.com/ShiftMediaProject/VSNASM.git ./vsnasm
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
 
-      - name: Setup Env
-        run: echo "CI=Local" >> $GITHUB_ENV
+    - name: Upgrade x264 Project
+      run: |
+        $devenv = & vswhere.exe -property productPath
+        Start-Process -Wait -FilePath $devenv -NoNewWindow -ArgumentList "${{github.workspace}}\source\x264\SMP\libx264.vcxproj", "-upgrade"
+    - name: Build x264
+      run: |
+        msbuild "${{github.workspace}}\source\x264\SMP\libx264.vcxproj" /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
 
-      - name: Setup vsnasm
-        working-directory: ./vsnasm
-        run: ./install_script.bat
+    - name: Generate FFmpeg VS Project
+      working-directory: ./source
+      run: |
+        Start-Process -Wait -NoNewWindow -FilePath ".\project_generate.exe" -ArgumentList `
+          "--disable-everything", `
+          "--enable-gpl", `
+          "--enable-version3", `
+          "--enable-avcodec", `
+          "--enable-avformat", `
+          "--enable-swresample", `
+          "--enable-avutil", `
+          "--enable-libx264", `
+          "--enable-encoder=libx264", `
+          "--enable-decoder=h264", `
+          "--enable-hwaccel=h264_dxva2", `
+          "--enable-hwaccel=h264_d3d11va", `
+          "--enable-hwaccel=h264_d3d11va2", `
+          "--enable-w32threads"
 
-      - name: Download FFVS-Project-Generator
-        uses: robinraju/release-downloader@v1.6
-        with:
-          repository: "ShiftMediaProject/FFVS-Project-Generator"
-          tag: "1.11.5"
-          fileName: "FFVS-Project-Generator_1.11.5_x64.zip"
+    - name: Build FFmpeg
+      run: |
+        msbuild "${{github.workspace}}\source\ffmpeg\SMP\ffmpeg.sln" /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
 
-      - name: Unzip FFVS-Project-Generator
-        run: 7z x FFVS-Project-Generator_1.11.5_x64.zip
+    - name: Zip Output
+      working-directory: ${{ github.workspace }}
+      run: |
+        mkdir upload
+        Copy-Item -Recurse -Path msvc\bin\* -Destination upload\
+        7z a artifacts_h264_dynamic.zip .\upload\*
 
-      - name: Copy Generator
-        run: Copy-Item -Path "project_generate.exe" -Destination "source\project_generate.exe" -Force
-
-      - name: Copy AMF headers
-        run: Copy-Item -Path "${{github.workspace}}\source\AMF\amf\public\include" -Recurse -Destination "${{github.workspace}}\msvc\include\AMF" -Force
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1.1
-
-      - name: Upgrade x264
-        run: |
-          $devenv = & vswhere.exe '-property' productPath
-          Start-Process -Wait -FilePath $devenv -ArgumentList "${{github.workspace}}\source\x264\SMP\libx264.vcxproj", "-upgrade"
-
-      - name: Build x264 (dynamic)
-        run: |
-          $proc = Start-Process -FilePath "MSBuild.exe" -PassThru -NoNewWindow -ArgumentList `
-            "-t:ReBuild", "-nodeReuse:false", `
-            "-p:Configuration=ReleaseDLL", "-p:Platform=x64", "-p:PlatformToolset=v143", `
-            "${{github.workspace}}\source\x264\SMP\libx264.vcxproj"
-          Wait-Process -InputObject $proc
-
-      - name: Upgrade mfx
-        run: |
-          $devenv = & vswhere.exe '-property' productPath
-          Start-Process -Wait -FilePath $devenv -ArgumentList "${{github.workspace}}\source\mfx_dispatch\SMP\libmfx.vcxproj", "-upgrade"
-
-      - name: Build mfx (dynamic)
-        run: |
-          $proc = Start-Process -FilePath "MSBuild.exe" -PassThru -NoNewWindow -ArgumentList `
-            "-t:ReBuild", "-nodeReuse:false", `
-            "-p:Configuration=ReleaseDLL", "-p:Platform=x64", "-p:PlatformToolset=v143", `
-            "${{github.workspace}}\source\mfx_dispatch\SMP\libmfx.vcxproj"
-          Wait-Process -InputObject $proc
-
-      - name: Generate FFmpeg Project (H264 only, dynamic)
-        working-directory: ./source
-        run: |
-          Start-Process -Wait -FilePath ".\project_generate.exe" -ArgumentList `
-            "--disable-all", "--disable-autodetect", `
-            "--enable-dxva2", "--enable-d3d11va", `
-            "--enable-amf", "--enable-libmfx", `
-            "--enable-w32threads", "--enable-gpl", "--enable-version3", `
-            "--enable-avutil", "--enable-avdevice", "--enable-avcodec", "--enable-avformat", "--enable-swresample", `
-            "--enable-libx264", "--enable-encoder=libx264", "--enable-decoder=h264", `
-            "--enable-encoder=h264_amf", "--enable-encoder=h264_qsv", `
-            "--enable-decoder=h264_qsv", `
-            "--enable-hwaccel=h264_d3d11va", "--enable-hwaccel=h264_dxva2", `
-            "--disable-doc", "--disable-network", `
-            "--enable-shared", "--disable-static"
-
-      - name: Compile FFmpeg (DLL mode)
-        run: |
-          $proc = Start-Process -FilePath "MSBuild.exe" -PassThru -NoNewWindow -ArgumentList `
-            "-t:ReBuild", "-nodeReuse:false", `
-            "-p:Configuration=ReleaseDLL", "-p:Platform=x64", "-p:PlatformToolset=v143", `
-            "${{github.workspace}}\source\ffmpeg\SMP\ffmpeg.sln"
-          Wait-Process -InputObject $proc
-
-      - name: Zip Output
-        run: 7z a artifacts_h264_dynamic.zip ${{github.workspace}}\msvc\*
-
-      - name: Release
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: "artifacts_h264_dynamic.zip"
-          tag: "h264-latest"
-          allowUpdates: true
+    - name: Upload Release Artifact
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: h264-latest
+        name: "H.264 FFmpeg Build"
+        files: artifacts_h264_dynamic.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

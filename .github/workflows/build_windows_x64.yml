@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 必须授权写权限才能发布 Release
+  contents: write
 
 jobs:
   build:
@@ -29,6 +29,7 @@ jobs:
           make
           pkg-config
           mingw-w64-x86_64-x264
+          mingw-w64-x86_64-lzo2
 
     - name: Clone FFmpeg
       shell: msys2 {0}
@@ -41,6 +42,8 @@ jobs:
       shell: msys2 {0}
       run: |
         cd ffmpeg
+        export CFLAGS="-D__MINGW_USE_VC2005_COMPAT"
+        export CXXFLAGS="-D__MINGW_USE_VC2005_COMPAT"
         ./configure --prefix=/usr/local \
                     --target-os=mingw32 \
                     --arch=x86_64 \
@@ -55,11 +58,9 @@ jobs:
                     --enable-ffmpeg \
                     --disable-ffplay \
                     --disable-ffprobe \
-                    --enable-shared \
-                    --disable-static \
                     --disable-doc \
-                    --extra-cflags="-D__USE_MINGW_ANSI_STDIO=1 -U__STRICT_ANSI__" \
-                    --extra-ldflags="-static-libgcc -static-libstdc++"
+                    --enable-shared \
+                    --disable-static
 
     - name: Build and install
       shell: msys2 {0}

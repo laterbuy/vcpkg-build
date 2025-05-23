@@ -1,99 +1,61 @@
-name: Build Shared FFmpeg (Windows)
+name: Build FFmpeg DLL (x264, MSVC)
 
 on:
-  workflow_dispatch:
-
-permissions:
-  contents: write  # 必须授权写权限才能发布 Release
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  build-ffmpeg:
+  build:
     runs-on: windows-latest
 
+    env:
+      FFMPEG_VERSION: n6.1
+      BUILD_DIR: ${{ github.workspace }}\ffmpeg-build
+      INSTALL_DIR: ${{ github.workspace }}\ffmpeg-output
+
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
-
     - name: Install dependencies
-      shell: cmd
       run: |
-        choco install -y nasm git 7zip
-
-    - name: Build x264 (Static)
-      shell: cmd
-      run: |
-        git clone https://code.videolan.org/videolan/x264.git
+        choco install -y nasm
+        git clone --depth=1 https://github.com/ShiftMediaProject/x264
         cd x264
-        git checkout stable
-        CC=cl ./configure --enable-static --prefix=%CD%/../deps
-        make
-        make install
+        msbuild x264.sln /p:Configuration=Release /p:Platform=x64
+        cd ..
 
-    - name: Build FFmpeg (Shared)
-      shell: cmd
-      env:
-        PATH: ${{ github.workspace }}\deps\bin;%PATH%
+    - name: Clone FFmpeg and FFVS Generator
       run: |
-        git clone https://git.ffmpeg.org/ffmpeg.git
+        git clone --depth=1 https://github.com/FFVS/FFVS-Project-Generator FFVS
+        git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b %FFMPEG_VERSION% ffmpeg
+
+    - name: Generate FFmpeg DLL Project
+      run: |
+        cd FFVS
+        .\GenerateFFmpegProject.bat ..\ffmpeg ..\x264 dll
+
+    - name: Build FFmpeg DLL (Release x64)
+      run: |
         cd ffmpeg
-        git checkout release/6.0
-        
-        ./configure ^
-          --toolchain=msvc ^
-          --enable-shared ^
-          --disable-static ^
-          --enable-gpl ^
-          --enable-libx264 ^
-          --extra-cflags="-I${{ github.workspace }}\deps\include" ^
-          --extra-ldflags="-LIBPATH:${{ github.workspace }}\deps\lib" ^
-          --prefix=./dist ^
-          --disable-autodetect ^
-          --enable-avcodec ^
-          --enable-avformat ^
-          --enable-avfilter ^
-          --enable-encoder=libx264 ^
-          --enable-decoder=h264 ^
-          --enable-muxer=mp4 ^
-          --enable-demuxer=mov ^
-          --enable-protocol=file
-        
-        make
-        make install
+        msbuild ffmpeg.sln /p:Configuration=Release /p:Platform=x64
 
-    - name: Collect dynamic artifacts
-      shell: cmd
+    - name: Collect DLL + LIB + headers
       run: |
-        mkdir ffmpeg-dist
-        # 主程序与动态库
-        robocopy ffmpeg/dist/bin ffmpeg-dist/bin *.exe *.dll /E
-        # 导入库
-        robocopy ffmpeg/dist/lib ffmpeg-dist/lib *.lib /E
-        # 头文件
-        robocopy ffmpeg/dist/include ffmpeg-dist/include /E
-        # 文档与许可证
-        robocopy ffmpeg/doc ffmpeg-dist/doc *.txt /E
-        copy ffmpeg/LICENSE ffmpeg-dist/
-        copy ffmpeg/COPYING.* ffmpeg-dist/
-        # PDB调试符号
-        robocopy ffmpeg ffmpeg-dist/pdb *.pdb /E
+        mkdir %INSTALL_DIR%
+        xcopy /Y /S ffmpeg\bin\x64\Release\*.dll %INSTALL_DIR%\
+        xcopy /Y /S ffmpeg\lib\x64\Release\*.lib %INSTALL_DIR%\
+        xcopy /Y /S ffmpeg\include %INSTALL_DIR%\include\
 
-    - name: Generate verification files
+    - name: Create ZIP
       run: |
-        cd ffmpeg-dist
-        certutil -hashfile bin\ffmpeg.exe SHA256 > checksums.txt
-        certutil -hashfile bin\avcodec-60.dll SHA256 >> checksums.txt
-        dir /s /b *.dll *.exe >> filelist.txt
+        Compress-Archive -Path %INSTALL_DIR%\* -DestinationPath ffmpeg-x264-dll.zip
 
-    - name: Package artifacts
-      run: |
-        7z a -r ffmpeg-shared-full.zip .\ffmpeg-dist\*
-        
-    - name: Release
-      uses: ncipollo/release-action@v1
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        artifacts: "ffmpeg-shared-full.zip"
-        tag: "last-win-dll-1"
-        allowUpdates: true
+        tag_name: ${{ github.ref_name }}
+        files: ffmpeg-x264-dll.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

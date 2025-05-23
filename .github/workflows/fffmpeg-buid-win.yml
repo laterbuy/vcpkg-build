@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 必须授权写权限才能发布 Release
+  contents: write  # 允许上传 Release 资产
 
 jobs:
   build:
@@ -16,8 +16,11 @@ jobs:
       INSTALL_DIR: ${{ github.workspace }}\ffmpeg-output
 
     steps:
-    - name: Checkout
+    - name: Checkout current repo
       uses: actions/checkout@v4
+
+    - name: Setup MSVC environment
+      uses: ilammy/msvc-dev-cmd@v1
 
     - name: Install dependencies
       run: |
@@ -32,7 +35,7 @@ jobs:
         git clone --depth=1 https://github.com/FFVS/FFVS-Project-Generator FFVS
         git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b %FFMPEG_VERSION% ffmpeg
 
-    - name: Generate FFmpeg DLL Project
+    - name: Generate FFmpeg Project with DLL output
       run: |
         cd FFVS
         .\GenerateFFmpegProject.bat ..\ffmpeg ..\x264 dll
@@ -42,21 +45,20 @@ jobs:
         cd ffmpeg
         msbuild ffmpeg.sln /p:Configuration=Release /p:Platform=x64
 
-    - name: Collect DLL + LIB + headers
+    - name: Collect DLLs, LIBs, and headers
       run: |
         mkdir %INSTALL_DIR%
         xcopy /Y /S ffmpeg\bin\x64\Release\*.dll %INSTALL_DIR%\
         xcopy /Y /S ffmpeg\lib\x64\Release\*.lib %INSTALL_DIR%\
         xcopy /Y /S ffmpeg\include %INSTALL_DIR%\include\
 
-    - name: Create ZIP
+    - name: Archive build
       run: |
         Compress-Archive -Path %INSTALL_DIR%\* -DestinationPath ffmpeg-x264-dll.zip
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name }}
         files: ffmpeg-x264-dll.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

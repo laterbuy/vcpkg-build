@@ -141,6 +141,9 @@ jobs:
     - name: Zip Assets
       run: |
         7z a artifacts_windows_x64.zip ${{github.workspace}}\msvc\*
+    - name: Debug MSVC output
+      run: |
+        dir ${{github.workspace}}\msvc
     - name: Release
       uses: ncipollo/release-action@v1
       with:

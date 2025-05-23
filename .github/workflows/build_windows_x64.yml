@@ -33,7 +33,7 @@ jobs:
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n4.4.6
+        git checkout n6.1
 
     - name: Configure FFmpeg (shared, x264 only)
       shell: msys2 {0}

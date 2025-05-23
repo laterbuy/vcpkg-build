@@ -27,7 +27,7 @@ jobs:
           make
           pkg-config
           mingw-w64-x86_64-x264
-          zstd  # 用于解压旧版运行时库
+          zstd
 
     - name: Clone FFmpeg
       shell: msys2 {0}

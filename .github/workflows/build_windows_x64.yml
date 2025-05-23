@@ -32,7 +32,7 @@ jobs:
     - name: Clone FFmpeg
       shell: msys2 {0}
       run: |
-        git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
+        git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
         git checkout n6.1.2
 

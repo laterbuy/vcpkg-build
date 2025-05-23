@@ -154,6 +154,8 @@ jobs:
       run: |
         Start-Process -Wait -FilePath ".\project_generate.exe" -PassThru -NoNewWindow -ArgumentList `
         "--disable-all", `
+        "--enable-shared", 
+        "--disable-static", 
         "--disable-autodetect", `
         "--enable-dxva2", `
         "--enable-d3d11va", `
@@ -198,6 +200,18 @@ jobs:
       run: |
         $proc = Start-Process -FilePath "MSBuild.exe" -PassThru -NoNewWindow -ArgumentList "-t:ReBuild", "-nodeReuse:false", "-p:Configuration=Release", "-p:Platform=x64", "-p:PlatformToolset=v143", "${{github.workspace}}\source\ffmpeg\SMP\ffmpeg.sln"
         Wait-Process -InputObject $proc
+
+    - name: List FFmpeg Build Artifacts
+      run: |
+        Write-Host "`n===== BIN/x64/Release ====="
+        Get-ChildItem "${{github.workspace}}\source\ffmpeg\bin\x64\Release" -Recurse | ForEach-Object { $_.FullName }
+
+        Write-Host "`n===== LIB/x64/Release ====="
+        Get-ChildItem "${{github.workspace}}\source\ffmpeg\lib\x64\Release" -Recurse | ForEach-Object { $_.FullName }
+
+        Write-Host "`n===== INCLUDE ====="
+        Get-ChildItem "${{github.workspace}}\source\ffmpeg\include" -Recurse | ForEach-Object { $_.FullName }
+        
     - name: Zip Assets
       run: |
         7z a artifacts_windows_x64.zip ${{github.workspace}}\msvc\*

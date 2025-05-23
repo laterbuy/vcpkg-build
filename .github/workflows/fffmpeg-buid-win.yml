@@ -1,0 +1,99 @@
+name: Build Shared FFmpeg (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # 必须授权写权限才能发布 Release
+
+jobs:
+  build-ffmpeg:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install dependencies
+      shell: cmd
+      run: |
+        choco install -y nasm git 7zip
+
+    - name: Build x264 (Static)
+      shell: cmd
+      run: |
+        git clone https://code.videolan.org/videolan/x264.git
+        cd x264
+        git checkout stable
+        CC=cl ./configure --enable-static --prefix=%CD%/../deps
+        make
+        make install
+
+    - name: Build FFmpeg (Shared)
+      shell: cmd
+      env:
+        PATH: ${{ github.workspace }}\deps\bin;%PATH%
+      run: |
+        git clone https://git.ffmpeg.org/ffmpeg.git
+        cd ffmpeg
+        git checkout release/6.0
+        
+        ./configure ^
+          --toolchain=msvc ^
+          --enable-shared ^
+          --disable-static ^
+          --enable-gpl ^
+          --enable-libx264 ^
+          --extra-cflags="-I${{ github.workspace }}\deps\include" ^
+          --extra-ldflags="-LIBPATH:${{ github.workspace }}\deps\lib" ^
+          --prefix=./dist ^
+          --disable-autodetect ^
+          --enable-avcodec ^
+          --enable-avformat ^
+          --enable-avfilter ^
+          --enable-encoder=libx264 ^
+          --enable-decoder=h264 ^
+          --enable-muxer=mp4 ^
+          --enable-demuxer=mov ^
+          --enable-protocol=file
+        
+        make
+        make install
+
+    - name: Collect dynamic artifacts
+      shell: cmd
+      run: |
+        mkdir ffmpeg-dist
+        # 主程序与动态库
+        robocopy ffmpeg/dist/bin ffmpeg-dist/bin *.exe *.dll /E
+        # 导入库
+        robocopy ffmpeg/dist/lib ffmpeg-dist/lib *.lib /E
+        # 头文件
+        robocopy ffmpeg/dist/include ffmpeg-dist/include /E
+        # 文档与许可证
+        robocopy ffmpeg/doc ffmpeg-dist/doc *.txt /E
+        copy ffmpeg/LICENSE ffmpeg-dist/
+        copy ffmpeg/COPYING.* ffmpeg-dist/
+        # PDB调试符号
+        robocopy ffmpeg ffmpeg-dist/pdb *.pdb /E
+
+    - name: Generate verification files
+      run: |
+        cd ffmpeg-dist
+        certutil -hashfile bin\ffmpeg.exe SHA256 > checksums.txt
+        certutil -hashfile bin\avcodec-60.dll SHA256 >> checksums.txt
+        dir /s /b *.dll *.exe >> filelist.txt
+
+    - name: Package artifacts
+      run: |
+        7z a -r ffmpeg-shared-full.zip .\ffmpeg-dist\*
+        
+    - name: Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "ffmpeg-shared-full.zip"
+        tag: "last-win-dll-1"
+        allowUpdates: true

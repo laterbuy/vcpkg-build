@@ -201,16 +201,9 @@ jobs:
         $proc = Start-Process -FilePath "MSBuild.exe" -PassThru -NoNewWindow -ArgumentList "-t:ReBuild", "-nodeReuse:false", "-p:Configuration=Release", "-p:Platform=x64", "-p:PlatformToolset=v143", "${{github.workspace}}\source\ffmpeg\SMP\ffmpeg.sln"
         Wait-Process -InputObject $proc
 
-    - name: List FFmpeg Build Artifacts
+    - name: Debug zip location
       run: |
-        Write-Host "`n===== BIN/x64/Release ====="
-        Get-ChildItem "${{github.workspace}}\source\ffmpeg\bin\x64\Release" -Recurse | ForEach-Object { $_.FullName }
-
-        Write-Host "`n===== LIB/x64/Release ====="
-        Get-ChildItem "${{github.workspace}}\source\ffmpeg\lib\x64\Release" -Recurse | ForEach-Object { $_.FullName }
-
-        Write-Host "`n===== INCLUDE ====="
-        Get-ChildItem "${{github.workspace}}\source\ffmpeg\include" -Recurse | ForEach-Object { $_.FullName }
+        dir "${{github.workspace}}\msvc\"
         
     - name: Zip Assets
       run: |
@@ -219,5 +212,5 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         artifacts: "artifacts_windows_x64.zip"
-        tag: "latest-test"
+        tag: "latest-test-01"
         allowUpdates: true

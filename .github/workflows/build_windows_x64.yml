@@ -36,26 +36,6 @@ jobs:
         cd ffmpeg
         git checkout n6.1.2
 
-    - name: Apply compatibility patch
-      shell: msys2 {0}
-      run: |
-        cd ffmpeg
-        cat > compat.patch << 'EOF'
-        diff --git a/configure b/configure
-        index 7f5c5d3..a1b3e5e 100755
-        --- a/configure
-        +++ b/configure
-        @@ -5794,6 +5794,7 @@ case $target_os in
-             ;;
-         mingw32*)
-             enabled shared && ! enabled small && test_cmd $windres --version && enable gnu_windres
-        +    add_cflags -D_WIN32_WINNT=0x0601
-             ;;
-         linux)
-             enable section_data_rel_ro
-        EOF
-        git apply compat.patch
-
     - name: Configure FFmpeg
       shell: msys2 {0}
       run: |
@@ -79,7 +59,7 @@ jobs:
           --enable-shared \
           --disable-static \
           --disable-doc \
-          --extra-cflags="-static-libgcc" \
+          --extra-cflags="-D_WIN32_WINNT=0x0601 -static-libgcc" \
           --extra-ldflags="-static-libgcc"
 
     - name: Build and install

@@ -165,14 +165,10 @@ jobs:
           Write-Error "❌ artifacts_windows_x64.zip not found"
           exit 1
         }
-    - name: Set Release Tag with Timestamp
-      run: |
-        $now = Get-Date -Format "yyyyMMddHHmmss"
-        echo "RELEASE_TAG=release-$now" >> $GITHUB_ENV
     
     - name: Release
       uses: ncipollo/release-action@v1
       with:
         artifacts: "${{ github.workspace }}\\artifacts_windows_x64.zip"
-        tag: ${{ env.RELEASE_TAG }}
+        tag: "last-win-dll"
         allowUpdates: true

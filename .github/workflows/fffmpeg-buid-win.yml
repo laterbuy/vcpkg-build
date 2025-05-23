@@ -1,9 +1,10 @@
 name: Build FFmpeg DLL (x264, MSVC)
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # 必须授权写权限才能发布 Release
 
 jobs:
   build:

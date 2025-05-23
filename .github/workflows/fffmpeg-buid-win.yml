@@ -52,6 +52,10 @@ jobs:
         xcopy /Y /S ffmpeg\lib\x64\Release\*.lib %INSTALL_DIR%\
         xcopy /Y /S ffmpeg\include %INSTALL_DIR%\include\
 
+        xcopy /Y /S x264\bin\x64\Release\*.dll %INSTALL_DIR%\bin\
+        xcopy /Y /S x264\lib\x64\Release\*.lib %INSTALL_DIR%\lib\
+        xcopy /Y /S x264\include\* %INSTALL_DIR%\include\
+
     - name: Archive build
       run: |
         Compress-Archive -Path %INSTALL_DIR%\* -DestinationPath ffmpeg-x264-dll.zip

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write  # 必须授权写权限才能发布 Release
 
 jobs:
   build:
@@ -27,40 +27,35 @@ jobs:
           make
           pkg-config
           mingw-w64-x86_64-x264
-          zstd
 
     - name: Clone FFmpeg
       shell: msys2 {0}
       run: |
         git clone https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n6.1.2
+        git checkout n6.1.1
 
-    - name: Configure FFmpeg
+    - name: Configure FFmpeg (shared, x264 only)
       shell: msys2 {0}
       run: |
         cd ffmpeg
-        ./configure \
-          --prefix=/mingw64 \
-          --arch=x86_64 \
-          --target-os=mingw32 \
-          --cross-prefix=x86_64-w64-mingw32- \
-          --enable-gpl \
-          --enable-libx264 \
-          --disable-everything \
-          --enable-encoder=libx264 \
-          --enable-decoder=h264 \
-          --enable-muxer=mp4 \
-          --enable-demuxer=h264 \
-          --enable-protocol=file \
-          --enable-ffmpeg \
-          --disable-ffplay \
-          --disable-ffprobe \
-          --enable-shared \
-          --disable-static \
-          --disable-doc \
-          --extra-cflags="-D_WIN32_WINNT=0x0601 -static-libgcc" \
-          --extra-ldflags="-static-libgcc"
+        ./configure --prefix=/usr/local \
+                    --target-os=mingw32 \
+                    --arch=x86_64 \
+                    --enable-gpl \
+                    --enable-libx264 \
+                    --disable-everything \
+                    --enable-encoder=libx264 \
+                    --enable-decoder=h264 \
+                    --enable-muxer=mp4 \
+                    --enable-demuxer=h264 \
+                    --enable-protocol=file \
+                    --enable-ffmpeg \
+                    --disable-ffplay \
+                    --disable-ffprobe \
+                    --enable-shared \
+                    --disable-static \
+                    --disable-doc
 
     - name: Build and install
       shell: msys2 {0}
@@ -69,56 +64,47 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Prepare runtime libraries
+    - name: Prepare output
       shell: msys2 {0}
       run: |
-        mkdir -p ffmpeg-dist
-        # 主程序文件
-        cp /mingw64/bin/ffmpeg.exe ffmpeg-dist/
-        
-        # 必需DLL（排除有兼容性问题的版本）
-        cp /mingw64/bin/avcodec-58.dll ffmpeg-dist/
-        cp /mingw64/bin/avformat-58.dll ffmpeg-dist/
-        cp /mingw64/bin/avutil-56.dll ffmpeg-dist/
-        cp /mingw64/bin/swresample-3.dll ffmpeg-dist/
-        cp /mingw64/bin/swscale-5.dll ffmpeg-dist/
-        cp /mingw64/bin/libx264-*.dll ffmpeg-dist/
-        
-        # 下载旧版运行时库（GCC 11.3.0）
-        curl -L -o old_runtime.tar.zst https://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-gcc-libs-11.3.0-3-any.pkg.tar.zst
-        tar -I zstd -xf old_runtime.tar.zst -C ffmpeg-dist usr/bin/libgcc_s_seh-1.dll usr/bin/libwinpthread-1.dll
-        mv ffmpeg-dist/usr/bin/*.dll ffmpeg-dist/
-        rm -rf ffmpeg-dist/usr old_runtime.tar.zst
+        mkdir -p ffmpeg-package
+        cp -r /usr/local/bin ffmpeg-package/
+        cp -r /usr/local/include ffmpeg-package/
+        cp -r /usr/local/lib ffmpeg-package/
+        if [ -d /usr/local/share/ffmpeg ]; then
+          cp -r /usr/local/share/ffmpeg ffmpeg-package/presets
+        fi
 
-    - name: Verify dependencies
-      shell: cmd
-      run: |
-        cd ffmpeg-dist
-        dumpbin /dependents ffmpeg.exe > deps.txt
-        findstr "clock_gettime64" deps.txt && exit 1 || exit 0
-
-    - name: Compress artifacts
+    - name: Compress to zip
       shell: bash
       run: |
-        7z a -tzip ffmpeg-win64-x264-dynamic.zip ./ffmpeg-dist/*
+        7z a ffmpeg-windows-x64-x264.zip ./ffmpeg-package/*
 
-    - name: Generate version tag
-      id: version
+    - name: Generate unique tag
+      id: tag
       shell: bash
       run: |
-        version=$(date -u +'%Y.%m.%d')
-        build_num=1
-        while git ls-remote --exit-code --tags origin "v$version.$build_num" &>/dev/null; do
-          ((build_num++))
+        base="v$(date +'%Y.%m.%d')"
+        n=1
+        while git ls-remote --exit-code --tags origin "$base.$(printf '%03d' $n)" &> /dev/null; do
+          n=$((n + 1))
         done
-        echo "tag=v$version.$build_num" >> $GITHUB_OUTPUT
-        echo "name=FFmpeg Windows x64 (x264) $version.$build_num" >> $GITHUB_OUTPUT
+        tag="$base.$(printf '%03d' $n)"
+        echo "tag=$tag" >> $GITHUB_OUTPUT
 
-    - name: Create release
+    - name: Create Git Tag
+      shell: bash
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git tag ${{ steps.tag.outputs.tag }}
+        git push origin ${{ steps.tag.outputs.tag }}
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.version.outputs.tag }}
-        name: ${{ steps.version.outputs.name }}
-        files: ffmpeg-win64-x264-dynamic.zip
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: FFmpeg Release ${{ steps.tag.outputs.tag }}
+        files: ffmpeg-windows-x64-x264.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

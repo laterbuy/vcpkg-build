@@ -55,7 +55,9 @@ jobs:
                     --disable-ffprobe \
                     --enable-shared \
                     --disable-static \
-                    --disable-doc
+                    --disable-doc \
+                    --extra-cflags="-D_WIN32_WINNT=0x0601" \
+                    --extra-ldflags="-static-libgcc"
 
     - name: Build and install
       shell: msys2 {0}

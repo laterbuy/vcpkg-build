@@ -140,13 +140,26 @@ jobs:
         Wait-Process -InputObject $proc
     - name: Zip Assets
       run: |
-        7z a artifacts_windows_x64.zip ${{github.workspace}}\msvc\*
-    - name: Debug MSVC output
+        7z a "${{github.workspace}}\artifacts_windows_x64.zip" "${{github.workspace}}\msvc\*"
+    
+    - name: Confirm artifact zip exists
       run: |
-        dir ${{github.workspace}}\msvc
+        if (!(Test-Path "${{github.workspace}}\artifacts_windows_x64.zip")) {
+          Write-Error "❌ artifacts_windows_x64.zip not found"
+          exit 1
+        } else {
+          Write-Host "✅ artifacts_windows_x64.zip found"
+        }
+    
+    - name: Debug zip location
+      run: |
+        dir "${{github.workspace}}"
+    
     - name: Release
       uses: ncipollo/release-action@v1
       with:
         artifacts: "artifacts_windows_x64.zip"
         tag: "latest"
         allowUpdates: true
+        # 🔽 加上这行确保 working-directory 正确，release-action 默认是相对路径
+        working-directory: ${{ github.workspace }}

@@ -34,7 +34,7 @@ jobs:
       run: |
         git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
-        git checkout n4.4.6
+        git checkout n6.1
 
     - name: Apply compatibility patch
       shell: msys2 {0}

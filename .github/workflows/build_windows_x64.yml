@@ -69,12 +69,24 @@ jobs:
     - name: Prepare output
       shell: msys2 {0}
       run: |
-        mkdir -p ffmpeg-package
-        cp -r /usr/local/bin ffmpeg-package/
-        cp -r /usr/local/include ffmpeg-package/
-        cp -r /usr/local/lib ffmpeg-package/
+        mkdir -p ffmpeg-package/bin
+        mkdir -p ffmpeg-package/include
+        mkdir -p ffmpeg-package/lib
+
+        # FFmpeg 输出
+        cp -r /usr/local/bin/* ffmpeg-package/bin/
+        cp -r /usr/local/include/* ffmpeg-package/include/
+        cp -r /usr/local/lib/* ffmpeg-package/lib/
+
+        # x264 动态库与头文件（来自 MSYS2 自带的 x264）
+        cp /mingw64/bin/libx264-*.dll ffmpeg-package/bin/
+        cp -r /mingw64/include/x264.h ffmpeg-package/include/
+        cp -r /mingw64/lib/libx264.dll.a ffmpeg-package/lib/
+
+        # FFmpeg 预设文件（可选）
         if [ -d /usr/local/share/ffmpeg ]; then
-          cp -r /usr/local/share/ffmpeg ffmpeg-package/presets
+          mkdir -p ffmpeg-package/presets
+          cp -r /usr/local/share/ffmpeg/* ffmpeg-package/presets/
         fi
 
     - name: Compress to zip

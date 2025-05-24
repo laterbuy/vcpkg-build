@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 必须授权写权限才能发布 Release
+  contents: write
 
 jobs:
   build:
@@ -22,6 +22,8 @@ jobs:
           base-devel
           git
           mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-crt-git
+          mingw-w64-x86_64-headers-git
           nasm
           yasm
           make
@@ -35,7 +37,7 @@ jobs:
         cd ffmpeg
         git checkout n6.1.1
 
-    - name: Configure FFmpeg (shared, x264 only)
+    - name: Configure FFmpeg (shared, x264 only, no libva, Win7 compat)
       shell: msys2 {0}
       run: |
         cd ffmpeg
@@ -45,6 +47,7 @@ jobs:
                     --enable-gpl \
                     --enable-libx264 \
                     --disable-vaapi \
+                    --disable-hwaccels \
                     --disable-everything \
                     --enable-encoder=libx264 \
                     --enable-decoder=h264 \
@@ -57,7 +60,7 @@ jobs:
                     --enable-shared \
                     --disable-static \
                     --disable-doc \
-                    --extra-cflags="-D_WIN32_WINNT=0x0601" \
+                    --extra-cflags="-D__MINGW_USE_VC2005_COMPAT -D_WIN32_WINNT=0x0601" \
                     --extra-ldflags="-static-libgcc"
 
     - name: Build and install
@@ -70,24 +73,12 @@ jobs:
     - name: Prepare output
       shell: msys2 {0}
       run: |
-        mkdir -p ffmpeg-package/bin
-        mkdir -p ffmpeg-package/include
-        mkdir -p ffmpeg-package/lib
-
-        # FFmpeg 输出
-        cp -r /usr/local/bin/* ffmpeg-package/bin/
-        cp -r /usr/local/include/* ffmpeg-package/include/
-        cp -r /usr/local/lib/* ffmpeg-package/lib/
-
-        # x264 动态库与头文件（来自 MSYS2 自带的 x264）
-        cp /mingw64/bin/libx264-*.dll ffmpeg-package/bin/
-        cp -r /mingw64/include/x264.h ffmpeg-package/include/
-        cp -r /mingw64/lib/libx264.dll.a ffmpeg-package/lib/
-
-        # FFmpeg 预设文件（可选）
+        mkdir -p ffmpeg-package
+        cp -r /usr/local/bin ffmpeg-package/
+        cp -r /usr/local/include ffmpeg-package/
+        cp -r /usr/local/lib ffmpeg-package/
         if [ -d /usr/local/share/ffmpeg ]; then
-          mkdir -p ffmpeg-package/presets
-          cp -r /usr/local/share/ffmpeg/* ffmpeg-package/presets/
+          cp -r /usr/local/share/ffmpeg ffmpeg-package/presets
         fi
 
     - name: Compress to zip

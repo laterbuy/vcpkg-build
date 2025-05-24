@@ -44,6 +44,7 @@ jobs:
                     --arch=x86_64 \
                     --enable-gpl \
                     --enable-libx264 \
+                    --disable-vaapi \
                     --disable-everything \
                     --enable-encoder=libx264 \
                     --enable-decoder=h264 \

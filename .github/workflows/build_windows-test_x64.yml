@@ -107,28 +107,18 @@ jobs:
           --disable-static \
           --disable-debug \
           --disable-doc \
-          --disable-programs \
+          --enable-ffmpeg \
+          --enable-ffprobe \
           --disable-everything \
           --enable-avcodec \
           --enable-avformat \
           --enable-avutil \
           --enable-swscale \
-          --enable-swresample \
           --enable-protocol=file \
           --enable-protocol=pipe \
-          --enable-protocol=http \
-          --enable-protocol=https \
-          --enable-protocol=tcp \
-          --enable-protocol=udp \
           --enable-demuxer=mov \
           --enable-demuxer=mp4 \
-          --enable-demuxer=matroska \
-          --enable-demuxer=avi \
-          --enable-demuxer=flv \
           --enable-muxer=mp4 \
-          --enable-muxer=matroska \
-          --enable-muxer=avi \
-          --enable-muxer=flv \
           --enable-encoder=libx264 \
           --enable-encoder=h264_qsv \
           --enable-encoder=h264_amf \
@@ -136,12 +126,7 @@ jobs:
           --enable-decoder=h264_qsv \
           --enable-parser=h264 \
           --enable-bsf=h264_mp4toannexb \
-          --enable-bsf=h264_metadata \
           --enable-filter=scale \
-          --enable-filter=fps \
-          --enable-filter=format \
-          --enable-filter=null \
-          --enable-filter=anull \
           --enable-libx264 \
           --enable-gpl \
           --enable-version3 \
@@ -183,15 +168,23 @@ jobs:
         mkdir -p ffmpeg-windows-h264/lib
         mkdir -p ffmpeg-windows-h264/include
         
-        # Copy DLL files from build output
-        cp /tmp/ffmpeg-install/mingw64/bin/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        # Copy main FFmpeg DLLs (prefer versioned ones)
+        cp /tmp/ffmpeg-install/mingw64/bin/avcodec-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/avformat-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/avutil-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/swscale-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
-        # If DLLs are built in the source directory
+        # Copy executable files
+        cp /tmp/ffmpeg-install/mingw64/bin/ffmpeg.exe ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/ffprobe.exe ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        
+        # If built in source directory, copy from there
+        cp ffmpeg/ffmpeg.exe ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/ffprobe.exe ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libavcodec/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libavformat/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libavutil/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libswscale/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
-        cp ffmpeg/libswresample/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Copy lib files
         cp /tmp/ffmpeg-install/mingw64/lib/*.dll.a ffmpeg-windows-h264/lib/ || true
@@ -213,21 +206,45 @@ jobs:
         
         This build includes:
         - H.264 software encoding via libx264
-        - H.264 hardware encoding support (QSV, AMF)
-        - H.264 decoding with hardware acceleration support
+        - H.264 hardware encoding (Intel QSV, AMD AMF)
+        - H.264 hardware decoding (Intel QSV)
+        - Optimized for H.264 video processing
         - Dynamic libraries (.dll files)
+        - Command-line tools (ffmpeg.exe, ffprobe.exe)
         
         ## Usage
         Add the `bin` directory to your PATH or place the DLL files alongside your application.
         
-        ## Included encoders:
-        - libx264 (software H.264 encoding)
-        - h264_qsv (Intel Quick Sync Video)
-        - h264_amf (AMD hardware encoding)
+        ### Command-line tools:
+        - `ffmpeg.exe` - Main FFmpeg tool for video/audio processing
+        - `ffprobe.exe` - Media analysis tool
         
-        ## Included decoders:
-        - h264 (software decoding)
-        - h264_qsv (Intel hardware decoding)
+        ### Example usage:
+        ```bash
+        # Software encoding with libx264
+        ffmpeg -i input.mp4 -c:v libx264 -preset medium -crf 23 output.mp4
+        
+        # Hardware encoding with Intel QSV
+        ffmpeg -i input.mp4 -c:v h264_qsv -preset medium output.mp4
+        
+        # Hardware encoding with AMD AMF
+        ffmpeg -i input.mp4 -c:v h264_amf -quality balanced output.mp4
+        
+        # Scale and encode
+        ffmpeg -i input.mp4 -vf scale=1280:720 -c:v libx264 output_720p.mp4
+        
+        # Analyze media file
+        ffprobe -v quiet -print_format json -show_format -show_streams input.mp4
+        ```
+        
+        ## Included features:
+        - libx264 software H.264 encoding
+        - h264_qsv Intel Quick Sync Video hardware encoding/decoding
+        - h264_amf AMD hardware encoding
+        - H.264 software decoding
+        - MP4/MOV container support
+        - Basic scaling filter
+        - File I/O protocols
         EOF
         
         # List files for verification

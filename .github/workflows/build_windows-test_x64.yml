@@ -1,4 +1,4 @@
-name: Build FFmpeg DLL (x264, MSVC)
+name: Build FFmpeg DLL (x264, MSVC -test)
 
 on:
   workflow_dispatch:
@@ -22,17 +22,43 @@ jobs:
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install dependencies
-      run: |
-        choco install -y nasm
-        git clone --depth=1 https://github.com/ShiftMediaProject/x264
-        cd x264
-        msbuild x264.sln /p:Configuration=Release /p:Platform=x64
-        cd ..
-
-    - name: Install MSYS2 for FFmpeg build
+    - name: Install MSYS2 for build tools
       run: |
         choco install -y msys2
+
+    - name: Install dependencies and build x264
+      run: |
+        choco install -y nasm
+        
+        # 设置MSYS2环境
+        $env:PATH = "C:\tools\msys64\usr\bin;C:\tools\msys64\mingw64\bin;$env:PATH"
+        
+        # 使用原版x264构建（更可靠）
+        git clone --depth=1 https://github.com/mirror/x264 x264-source
+        cd x264-source
+        
+        # 配置并构建x264
+        bash -c "./configure --enable-shared --enable-pic --prefix=${{ github.workspace }}/x264-build --enable-win32thread"
+        bash -c "make -j4"
+        bash -c "make install"
+        
+        # 创建目录结构以匹配后续步骤
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/bin/x64/Release"
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/lib/x64/Release" 
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/include"
+        
+        # 复制构建结果
+        if (Test-Path "${{ github.workspace }}/x264-build/bin") {
+          Copy-Item "${{ github.workspace }}/x264-build/bin/*" "${{ github.workspace }}/x264/bin/x64/Release/" -Force -Recurse
+        }
+        if (Test-Path "${{ github.workspace }}/x264-build/lib") {
+          Copy-Item "${{ github.workspace }}/x264-build/lib/*" "${{ github.workspace }}/x264/lib/x64/Release/" -Force -Recurse  
+        }
+        if (Test-Path "${{ github.workspace }}/x264-build/include") {
+          Copy-Item "${{ github.workspace }}/x264-build/include/*" "${{ github.workspace }}/x264/include/" -Force -Recurse
+        }
+        
+        cd ..
 
     - name: Setup Hardware Encoder Dependencies
       run: |
@@ -54,16 +80,9 @@ jobs:
         Expand-Archive -Path amf-headers.zip -DestinationPath .
         Rename-Item -Path "AMF-master" -NewName "amf"
 
-    - name: Clone FFmpeg and FFVS Generator
+    - name: Clone FFmpeg
       run: |
-        git clone --depth=1 https://github.com/FFVS/FFVS-Project-Generator FFVS
-        git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b %FFMPEG_VERSION% ffmpeg
-
-    - name: Generate FFmpeg Project with DLL output
-      run: |
-        cd FFVS
-        # 生成带硬件编码器支持的FFmpeg项目
-        .\GenerateFFmpegProject.bat ..\ffmpeg ..\x264 dll --enable-nvenc --enable-qsv --enable-amf
+        git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b $env:FFMPEG_VERSION ffmpeg
 
     - name: Configure FFmpeg for Hardware Encoders
       run: |

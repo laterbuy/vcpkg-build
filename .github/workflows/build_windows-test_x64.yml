@@ -114,6 +114,10 @@ jobs:
           --enable-avformat \
           --enable-avutil \
           --enable-swscale \
+          --enable-swresample \
+          --enable-avfilter \
+          --enable-avdevice \
+          --enable-postproc \
           --enable-protocol=file \
           --enable-protocol=pipe \
           --enable-demuxer=mov \
@@ -127,6 +131,9 @@ jobs:
           --enable-parser=h264 \
           --enable-bsf=h264_mp4toannexb \
           --enable-filter=scale \
+          --enable-filter=null \
+          --enable-filter=anull \
+          --enable-filter=format \
           --enable-libx264 \
           --enable-gpl \
           --enable-version3 \
@@ -173,6 +180,10 @@ jobs:
         cp /tmp/ffmpeg-install/mingw64/bin/avformat-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /tmp/ffmpeg-install/mingw64/bin/avutil-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /tmp/ffmpeg-install/mingw64/bin/swscale-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/swresample-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/avfilter-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/avdevice-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /tmp/ffmpeg-install/mingw64/bin/postproc-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Copy executable files
         cp /tmp/ffmpeg-install/mingw64/bin/ffmpeg.exe ffmpeg-windows-h264/bin/ 2>/dev/null || true
@@ -185,6 +196,10 @@ jobs:
         cp ffmpeg/libavformat/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libavutil/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp ffmpeg/libswscale/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libswresample/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libavfilter/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libavdevice/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libpostproc/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Copy lib files
         cp /tmp/ffmpeg-install/mingw64/lib/*.dll.a ffmpeg-windows-h264/lib/ || true

@@ -20,12 +20,12 @@ jobs:
       with:
         msystem: MINGW64
         install: >-
-          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-binutils
           mingw-w64-x86_64-pkg-config
           mingw-w64-x86_64-nasm
           mingw-w64-x86_64-yasm
-          make
-          diffutils
+          base-devel
           git
           
     - name: Install dependencies
@@ -43,12 +43,29 @@ jobs:
       shell: msys2 {0}
       run: |
         echo "Checking toolchain installation..."
-        which x86_64-w64-mingw32-gcc || echo "gcc not found"
-        which x86_64-w64-mingw32-ar || echo "ar not found"
-        which x86_64-w64-mingw32-nm || echo "nm not found"
-        which x86_64-w64-mingw32-ranlib || echo "ranlib not found"
+        echo "Current environment: $MSYSTEM"
         echo "PATH: $PATH"
-        ls -la /mingw64/bin/x86_64-w64-mingw32-* || echo "toolchain binaries not found"
+        
+        # Check for native mingw tools
+        echo "=== Native mingw tools ==="
+        ls -la /mingw64/bin/gcc* || echo "native gcc not found"
+        ls -la /mingw64/bin/ar* || echo "native ar not found"
+        
+        # Check for cross-compilation tools
+        echo "=== Cross-compilation tools ==="
+        which x86_64-w64-mingw32-gcc || echo "cross-gcc not found"
+        which x86_64-w64-mingw32-ar || echo "cross-ar not found"
+        which x86_64-w64-mingw32-nm || echo "cross-nm not found"
+        which x86_64-w64-mingw32-ranlib || echo "cross-ranlib not found"
+        
+        # List all available tools
+        echo "=== All x86_64-w64-mingw32 tools ==="
+        ls -la /mingw64/bin/*mingw32* 2>/dev/null || echo "no mingw32 tools found"
+        
+        # Check if we can use native tools instead
+        echo "=== Testing native tools ==="
+        /mingw64/bin/gcc --version || echo "native gcc failed"
+        /mingw64/bin/ar --version || echo "native ar failed"
         
     - name: Download FFmpeg source
       shell: msys2 {0}
@@ -61,15 +78,30 @@ jobs:
       run: |
         cd ffmpeg
         export PATH="/mingw64/bin:$PATH"
-        export AR="x86_64-w64-mingw32-ar"
-        export NM="x86_64-w64-mingw32-nm"
-        export RANLIB="x86_64-w64-mingw32-ranlib"
-        export STRIP="x86_64-w64-mingw32-strip"
+        
+        # Try to use cross-compilation tools, fallback to native tools
+        if command -v x86_64-w64-mingw32-ar >/dev/null 2>&1; then
+          export AR="x86_64-w64-mingw32-ar"
+          export NM="x86_64-w64-mingw32-nm"
+          export RANLIB="x86_64-w64-mingw32-ranlib"
+          export STRIP="x86_64-w64-mingw32-strip"
+          export CC="x86_64-w64-mingw32-gcc"
+          CROSS_PREFIX="x86_64-w64-mingw32-"
+        else
+          echo "Using native mingw tools"
+          export AR="ar"
+          export NM="nm"
+          export RANLIB="ranlib"
+          export STRIP="strip"
+          export CC="gcc"
+          CROSS_PREFIX=""
+        fi
+        
         ./configure \
           --prefix=/mingw64 \
           --arch=x86_64 \
           --target-os=mingw32 \
-          --cross-prefix=x86_64-w64-mingw32- \
+          --cross-prefix="$CROSS_PREFIX" \
           --enable-cross-compile \
           --enable-shared \
           --disable-static \
@@ -123,10 +155,23 @@ jobs:
       run: |
         cd ffmpeg
         export PATH="/mingw64/bin:$PATH"
-        export AR="x86_64-w64-mingw32-ar"
-        export NM="x86_64-w64-mingw32-nm"
-        export RANLIB="x86_64-w64-mingw32-ranlib"
-        export STRIP="x86_64-w64-mingw32-strip"
+        
+        # Use the same toolchain detection as configure step
+        if command -v x86_64-w64-mingw32-ar >/dev/null 2>&1; then
+          export AR="x86_64-w64-mingw32-ar"
+          export NM="x86_64-w64-mingw32-nm"
+          export RANLIB="x86_64-w64-mingw32-ranlib"
+          export STRIP="x86_64-w64-mingw32-strip"
+          export CC="x86_64-w64-mingw32-gcc"
+        else
+          echo "Using native mingw tools"
+          export AR="ar"
+          export NM="nm"
+          export RANLIB="ranlib"
+          export STRIP="strip"
+          export CC="gcc"
+        fi
+        
         make -j$(nproc)
         make install DESTDIR=/tmp/ffmpeg-install
         

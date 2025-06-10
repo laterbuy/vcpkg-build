@@ -223,26 +223,10 @@ jobs:
         cp /mingw64/bin/libbz2-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /mingw64/bin/libva*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
-        # Use ldd to find additional dependencies and copy them
-        echo "Checking dependencies..."
-        if [ -f ffmpeg-windows-h264/bin/ffmpeg.exe ]; then
-          ldd ffmpeg-windows-h264/bin/ffmpeg.exe | grep mingw64 | awk '{print $3}' | while read dll; do
-            if [ -f "$dll" ]; then
-              echo "Copying dependency: $(basename $dll)"
-              cp "$dll" ffmpeg-windows-h264/bin/ 2>/dev/null || true
-            fi
-          done
-        fi
-        
-        # Check for DLL dependencies in avcodec
-        if [ -f ffmpeg-windows-h264/bin/avcodec-60.dll ]; then
-          ldd ffmpeg-windows-h264/bin/avcodec-60.dll | grep mingw64 | awk '{print $3}' | while read dll; do
-            if [ -f "$dll" ]; then
-              echo "Copying avcodec dependency: $(basename $dll)"
-              cp "$dll" ffmpeg-windows-h264/bin/ 2>/dev/null || true
-            fi
-          done
-        fi
+        # Copy additional dependencies that might be needed
+        echo "Copying additional dependencies..."
+        cp /mingw64/bin/msys-2.0.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libintl-8.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Create README
         cat > ffmpeg-windows-h264/README.md << 'EOF'

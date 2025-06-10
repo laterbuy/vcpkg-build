@@ -1,207 +1,187 @@
-name: Build FFmpeg DLL (x264, MSVC -test)
+name: Build FFmpeg DLL for Windows
 
 on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
-permissions:
-  contents: write  # 允许上传 Release 资产
-
 jobs:
-  build:
+  build-ffmpeg:
     runs-on: windows-latest
-
-    env:
-      FFMPEG_VERSION: n6.1
-      BUILD_DIR: ${{ github.workspace }}\ffmpeg-build
-      INSTALL_DIR: ${{ github.workspace }}\ffmpeg-output
-
+    
     steps:
-    - name: Checkout current repo
+    - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Setup MSVC environment
-      uses: ilammy/msvc-dev-cmd@v1
-
-    - name: Install build dependencies
-      run: |
-        choco install -y nasm
-        choco install -y msys2
-
-    - name: Build x264 with MSVC compatibility
-      run: |
-        # 使用 ShiftMediaProject 的 x264 for MSVC
-        git clone --depth=1 https://github.com/ShiftMediaProject/x264
-        cd x264
-        
-        # 查找并构建正确的解决方案文件
-        if (Test-Path "SMP") { cd SMP }
-        
-        $solutionFile = Get-ChildItem -Filter "*.sln" | Select-Object -First 1
-        if ($solutionFile) {
-          Write-Host "✅ 找到解决方案文件: $($solutionFile.Name)"
-          msbuild $solutionFile.Name /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
-        } else {
-          Write-Host "❌ 未找到解决方案文件，使用备用方案"
-          # 使用vcpkg安装x264
-          cd ..
-          git clone https://github.com/Microsoft/vcpkg.git
-          cd vcpkg
-          .\bootstrap-vcpkg.bat
-          .\vcpkg.exe install x264:x64-windows
+      
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-make
+          mingw-w64-x86_64-diffutils
+          mingw-w64-x86_64-nasm
+          mingw-w64-x86_64-yasm
+          make
+          diffutils
+          git
           
-          # 复制vcpkg构建的x264文件
-          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/bin/x64/Release"
-          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/lib/x64/Release"
-          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/include"
+    - name: Install dependencies
+      shell: msys2 {0}
+      run: |
+        pacman -S --noconfirm \
+          mingw-w64-x86_64-x264 \
+          mingw-w64-x86_64-zlib \
+          mingw-w64-x86_64-bzip2 \
+          mingw-w64-x86_64-lame \
+          mingw-w64-x86_64-libvorbis \
+          mingw-w64-x86_64-opus
           
-          Copy-Item "installed/x64-windows/bin/x264*.dll" "${{ github.workspace }}/x264/bin/x64/Release/" -ErrorAction SilentlyContinue
-          Copy-Item "installed/x64-windows/lib/x264.lib" "${{ github.workspace }}/x264/lib/x64/Release/" -ErrorAction SilentlyContinue
-          Copy-Item "installed/x64-windows/include/x264*" "${{ github.workspace }}/x264/include/" -ErrorAction SilentlyContinue
-        }
-        cd ..
-
-    - name: Setup Hardware Encoder Dependencies
+    - name: Download FFmpeg source
+      shell: msys2 {0}
       run: |
-        # 创建硬件编码器目录
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/hardware-encoders/include"
-        
-        # 下载 NVIDIA Video Codec SDK (NVENC 支持)
-        Write-Host "🔽 下载 NVIDIA Video Codec SDK..."
-        curl -L -o nvcodec-headers.zip https://github.com/FFmpeg/nv-codec-headers/archive/refs/heads/master.zip
-        Expand-Archive -Path nvcodec-headers.zip -DestinationPath .
-        Copy-Item "nv-codec-headers-master\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
-        
-        # 下载 Intel Media SDK (QSV 支持)
-        Write-Host "🔽 下载 Intel Media SDK..."
-        git clone --depth=1 https://github.com/Intel-Media-SDK/MediaSDK intel-media-sdk
-        if (Test-Path "intel-media-sdk\api\include") {
-          Copy-Item "intel-media-sdk\api\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
-        }
-        
-        # 下载 AMD Media Framework (AMF 支持) 
-        Write-Host "🔽 下载 AMD Media Framework..."
-        curl -L -o amf-headers.zip https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/refs/heads/master.zip
-        Expand-Archive -Path amf-headers.zip -DestinationPath .
-        Rename-Item -Path "AMF-master" -NewName "amf"
-        if (Test-Path "amf\amf\public\include") {
-          Copy-Item "amf\amf\public\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
-        }
-
-    - name: Clone FFmpeg
-      run: |
-        git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b $env:FFMPEG_VERSION ffmpeg
-
-    - name: Configure and Build FFmpeg with MSVC
-      run: |
+        git clone --depth 1 --branch n6.1 https://git.ffmpeg.org/ffmpeg.git
         cd ffmpeg
         
-        # 设置MSYS2环境用于configure和make
-        $env:PATH = "C:\tools\msys64\usr\bin;$env:PATH"
-        
-        # 转换路径格式 
-        $workspace = (Get-Location).Path.Replace('\', '/').Replace('C:', '/c').Replace('D:', '/d').Replace('E:', '/e')
-        
-        Write-Host "🔧 配置FFmpeg..."
-        
-        # FFmpeg configure - 使用MSVC工具链
-        bash -c "./configure --enable-shared --disable-static --enable-libx264 --enable-nvenc --enable-qsv --enable-amf --enable-cuda-nvcc --enable-cuvid --enable-d3d11va --enable-dxva2 --toolchain=msvc --target-os=win64 --arch=x86_64 --prefix=$workspace/../ffmpeg-output --extra-cflags='-I$workspace/../hardware-encoders/include -I$workspace/../x264/include' --extra-ldflags='-L$workspace/../x264/lib/x64/Release' --extra-libs='-lx264'"
-        
-        Write-Host "🔨 构建FFmpeg..."
-        bash -c "make -j4"
-        bash -c "make install"
-
-    - name: Organize output and create build info
+    - name: Configure FFmpeg
+      shell: msys2 {0}
       run: |
-        Write-Host "📦 整理输出文件..."
-        
-        # 创建更好的目录结构
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\ffmpeg-output\include\x264"
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\ffmpeg-output\include\hardware-encoders"
-        
-        # 复制x264文件到子目录
-        if (Test-Path "x264\bin\x64\Release") {
-          Copy-Item "x264\bin\x64\Release\*" "${{ github.workspace }}\ffmpeg-output\bin\" -Force -Recurse -ErrorAction SilentlyContinue
-        }
-        if (Test-Path "x264\lib\x64\Release") {
-          Copy-Item "x264\lib\x64\Release\*" "${{ github.workspace }}\ffmpeg-output\lib\" -Force -Recurse -ErrorAction SilentlyContinue
-        }
-        if (Test-Path "x264\include") {
-          Copy-Item "x264\include\*" "${{ github.workspace }}\ffmpeg-output\include\x264\" -Force -Recurse -ErrorAction SilentlyContinue
-        }
-        
-        # 复制硬件编码器头文件到子目录
-        if (Test-Path "hardware-encoders\include") {
-          Copy-Item "hardware-encoders\include\*" "${{ github.workspace }}\ffmpeg-output\include\hardware-encoders\" -Force -Recurse -ErrorAction SilentlyContinue
-        }
-        
-        # 创建构建信息文件
-        $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-        $buildInfo = @"
-FFmpeg Build Information
-========================
-FFmpeg Version: 6.1
-Build Time: $buildTime
-Compiler: MSVC (Visual Studio 2022)
-Platform: Windows x64
-Architecture: x86_64
-
-Hardware Encoders:
-- ✅ NVIDIA NVENC (h264_nvenc) - NVIDIA GPU 硬件编码
-- ✅ Intel QSV (h264_qsv) - Intel Quick Sync Video  
-- ✅ AMD AMF (h264_amf) - AMD Media Framework
-- ✅ x264 (libx264) - 软件编码回退
-
-Additional Features:
-- CUDA acceleration
-- D3D11VA/DXVA2 hardware decoding
-- Shared libraries (.dll)
-- MSVC-compatible import libraries (.lib)
-
-Directory Structure:
-├── bin/          # DLL files
-├── lib/          # Import libraries (.lib)
-└── include/      # Header files
-    ├── ffmpeg/   # FFmpeg headers
-    ├── x264/     # x264 headers  
-    └── hardware-encoders/ # Hardware encoder headers
-
-Usage:
-Link against the .lib files and ensure .dll files are in your PATH.
-"@
-        
-        $buildInfo | Out-File -FilePath "${{ github.workspace }}\ffmpeg-output\build-info.txt" -Encoding UTF8
-        
-        Write-Host "✅ 构建完成！"
-
-    - name: Archive build
+        cd ffmpeg
+        ./configure \
+          --prefix=/mingw64 \
+          --arch=x86_64 \
+          --target-os=mingw32 \
+          --cross-prefix=x86_64-w64-mingw32- \
+          --enable-cross-compile \
+          --enable-shared \
+          --disable-static \
+          --disable-debug \
+          --disable-doc \
+          --disable-programs \
+          --disable-everything \
+          --enable-avcodec \
+          --enable-avformat \
+          --enable-avutil \
+          --enable-swscale \
+          --enable-swresample \
+          --enable-protocol=file \
+          --enable-protocol=pipe \
+          --enable-protocol=http \
+          --enable-protocol=https \
+          --enable-protocol=tcp \
+          --enable-protocol=udp \
+          --enable-demuxer=mov \
+          --enable-demuxer=mp4 \
+          --enable-demuxer=matroska \
+          --enable-demuxer=avi \
+          --enable-demuxer=flv \
+          --enable-muxer=mp4 \
+          --enable-muxer=matroska \
+          --enable-muxer=avi \
+          --enable-muxer=flv \
+          --enable-encoder=libx264 \
+          --enable-encoder=h264_qsv \
+          --enable-encoder=h264_amf \
+          --enable-decoder=h264 \
+          --enable-decoder=h264_qsv \
+          --enable-parser=h264 \
+          --enable-bsf=h264_mp4toannexb \
+          --enable-bsf=h264_metadata \
+          --enable-filter=scale \
+          --enable-filter=fps \
+          --enable-filter=format \
+          --enable-filter=null \
+          --enable-filter=anull \
+          --enable-libx264 \
+          --enable-gpl \
+          --enable-version3 \
+          --enable-nonfree \
+          --enable-runtime-cpudetect \
+          --extra-cflags="-O3" \
+          --extra-ldflags="-static-libgcc -static-libstdc++"
+          
+    - name: Build FFmpeg
+      shell: msys2 {0}
       run: |
-        Compress-Archive -Path ${{ github.workspace }}\ffmpeg-output\* -DestinationPath ffmpeg-hardware-encoders.zip
-
-    - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v2
+        cd ffmpeg
+        make -j$(nproc)
+        make install DESTDIR=/tmp/ffmpeg-install
+        
+    - name: Prepare artifacts
+      shell: msys2 {0}
+      run: |
+        mkdir -p ffmpeg-windows-h264
+        mkdir -p ffmpeg-windows-h264/bin
+        mkdir -p ffmpeg-windows-h264/lib
+        mkdir -p ffmpeg-windows-h264/include
+        
+        # Copy DLL files
+        cp /tmp/ffmpeg-install/mingw64/bin/*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/avcodec-*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/avformat-*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/avutil-*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/swscale-*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/swresample-*.dll ffmpeg-windows-h264/bin/ || true
+        
+        # Copy lib files
+        cp /tmp/ffmpeg-install/mingw64/lib/*.dll.a ffmpeg-windows-h264/lib/ || true
+        cp /tmp/ffmpeg-install/mingw64/lib/pkgconfig ffmpeg-windows-h264/lib/ -r || true
+        
+        # Copy headers
+        cp /tmp/ffmpeg-install/mingw64/include/libav* ffmpeg-windows-h264/include/ -r || true
+        cp /tmp/ffmpeg-install/mingw64/include/libsw* ffmpeg-windows-h264/include/ -r || true
+        
+        # Copy required MinGW DLLs
+        cp /mingw64/bin/libgcc_s_seh-1.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/libwinpthread-1.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/libstdc++-6.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/libx264-*.dll ffmpeg-windows-h264/bin/ || true
+        
+        # Create README
+        cat > ffmpeg-windows-h264/README.md << 'EOF'
+        # FFmpeg Windows H.264 Build
+        
+        This build includes:
+        - H.264 software encoding via libx264
+        - H.264 hardware encoding support (QSV, AMF)
+        - H.264 decoding with hardware acceleration support
+        - Dynamic libraries (.dll files)
+        
+        ## Usage
+        Add the `bin` directory to your PATH or place the DLL files alongside your application.
+        
+        ## Included encoders:
+        - libx264 (software H.264 encoding)
+        - h264_qsv (Intel Quick Sync Video)
+        - h264_amf (AMD hardware encoding)
+        
+        ## Included decoders:
+        - h264 (software decoding)
+        - h264_qsv (Intel hardware decoding)
+        EOF
+        
+        # List files for verification
+        echo "Generated files:"
+        find ffmpeg-windows-h264 -type f
+        
+    - name: Upload FFmpeg artifacts
+      uses: actions/upload-artifact@v4
       with:
-        files: ffmpeg-hardware-encoders.zip
-        tag_name: ffmpeg-hw-encoders-${{ github.run_number }}
-        name: "FFmpeg with Hardware Encoders (NVENC/QSV/AMF) - Build ${{ github.run_number }}"
-        body: |
-          🚀 **FFmpeg with Hardware Encoders Support**
-          
-          包含的硬件编码器:
-          - ✅ **NVIDIA NVENC** (h264_nvenc) - NVIDIA GPU 硬件编码
-          - ✅ **Intel QSV** (h264_qsv) - Intel Quick Sync Video
-          - ✅ **AMD AMF** (h264_amf) - AMD Media Framework
-          - ✅ **x264** (libx264) - 软件编码回退
-          
-          支持的功能:
-          - H.264 硬件编码 (NVENC/QSV/AMF)
-          - H.264 软件编码 (x264)
-          - CUDA 加速
-          - D3D11VA/DXVA2 硬件解码
-          
-          **构建信息:**
-          - FFmpeg 版本: 6.1
-          - 平台: Windows x64 
-          - 编译器: MSVC
-          - 构建时间: ${{ github.event.head_commit.timestamp }}
+        name: ffmpeg-windows-h264-dll
+        path: ffmpeg-windows-h264/
+        retention-days: 30
+        
+    - name: Create release on tag
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ffmpeg-windows-h264.zip
+        draft: false
+        prerelease: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

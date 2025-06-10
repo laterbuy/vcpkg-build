@@ -22,110 +22,156 @@ jobs:
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install MSYS2 for build tools
-      run: |
-        choco install -y msys2
-
-    - name: Install dependencies and setup x264
+    - name: Install build dependencies
       run: |
         choco install -y nasm
+        choco install -y msys2
+
+    - name: Build x264 with MSVC compatibility
+      run: |
+        # 使用 ShiftMediaProject 的 x264 for MSVC
+        git clone --depth=1 https://github.com/ShiftMediaProject/x264
+        cd x264
         
-        # 初始化MSYS2
-        C:\tools\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
-        C:\tools\msys64\usr\bin\bash.exe -lc "pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-x264"
+        # 查找并构建正确的解决方案文件
+        if (Test-Path "SMP") { cd SMP }
         
-        # 创建x264目录结构
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/bin/x64/Release"
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/lib/x64/Release" 
-        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/include"
-        
-        # 使用MSYS2预编译的x264
-        Copy-Item "C:\tools\msys64\mingw64\bin\libx264-*.dll" "${{ github.workspace }}/x264/bin/x64/Release/" -ErrorAction SilentlyContinue
-        Copy-Item "C:\tools\msys64\mingw64\lib\libx264.dll.a" "${{ github.workspace }}/x264/lib/x64/Release/x264.lib" -ErrorAction SilentlyContinue
-        Copy-Item "C:\tools\msys64\mingw64\include\x264.h" "${{ github.workspace }}/x264/include/" -ErrorAction SilentlyContinue
-        Copy-Item "C:\tools\msys64\mingw64\include\x264_config.h" "${{ github.workspace }}/x264/include/" -ErrorAction SilentlyContinue
-        
-        # 备用：如果预编译版本不可用，下载x264头文件
-        if (-not (Test-Path "${{ github.workspace }}/x264/include/x264.h")) {
-          Write-Host "下载x264头文件..."
-          curl -L -o x264.h https://raw.githubusercontent.com/mirror/x264/master/x264.h
-          Move-Item x264.h "${{ github.workspace }}/x264/include/"
+        $solutionFile = Get-ChildItem -Filter "*.sln" | Select-Object -First 1
+        if ($solutionFile) {
+          Write-Host "✅ 找到解决方案文件: $($solutionFile.Name)"
+          msbuild $solutionFile.Name /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+        } else {
+          Write-Host "❌ 未找到解决方案文件，使用备用方案"
+          # 使用vcpkg安装x264
+          cd ..
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install x264:x64-windows
           
-          # 创建简单的x264_config.h
-          @"
-#ifndef X264_CONFIG_H
-#define X264_CONFIG_H
-#define X264_BIT_DEPTH 8
-#define X264_GPL 1
-#define X264_INTERLACED 1
-#define X264_CHROMA_FORMAT 1
-#endif
-"@ | Out-File -FilePath "${{ github.workspace }}/x264/include/x264_config.h" -Encoding UTF8
+          # 复制vcpkg构建的x264文件
+          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/bin/x64/Release"
+          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/lib/x64/Release"
+          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/x264/include"
+          
+          Copy-Item "installed/x64-windows/bin/x264*.dll" "${{ github.workspace }}/x264/bin/x64/Release/" -ErrorAction SilentlyContinue
+          Copy-Item "installed/x64-windows/lib/x264.lib" "${{ github.workspace }}/x264/lib/x64/Release/" -ErrorAction SilentlyContinue
+          Copy-Item "installed/x64-windows/include/x264*" "${{ github.workspace }}/x264/include/" -ErrorAction SilentlyContinue
         }
+        cd ..
 
     - name: Setup Hardware Encoder Dependencies
       run: |
-        # 设置MSYS2环境
-        $env:PATH = "C:\tools\msys64\usr\bin;$env:PATH"
+        # 创建硬件编码器目录
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/hardware-encoders/include"
         
         # 下载 NVIDIA Video Codec SDK (NVENC 支持)
+        Write-Host "🔽 下载 NVIDIA Video Codec SDK..."
         curl -L -o nvcodec-headers.zip https://github.com/FFmpeg/nv-codec-headers/archive/refs/heads/master.zip
         Expand-Archive -Path nvcodec-headers.zip -DestinationPath .
-        cd nv-codec-headers-master
-        $workspace_unix = "${{ github.workspace }}".Replace('\', '/').Replace('C:', '/c')
-        C:\tools\msys64\usr\bin\bash.exe -lc "cd $workspace_unix/nv-codec-headers-master && make install PREFIX=$workspace_unix/nvcodec"
-        cd ..
+        Copy-Item "nv-codec-headers-master\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
         
         # 下载 Intel Media SDK (QSV 支持)
+        Write-Host "🔽 下载 Intel Media SDK..."
         git clone --depth=1 https://github.com/Intel-Media-SDK/MediaSDK intel-media-sdk
+        if (Test-Path "intel-media-sdk\api\include") {
+          Copy-Item "intel-media-sdk\api\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
+        }
         
         # 下载 AMD Media Framework (AMF 支持) 
+        Write-Host "🔽 下载 AMD Media Framework..."
         curl -L -o amf-headers.zip https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/refs/heads/master.zip
         Expand-Archive -Path amf-headers.zip -DestinationPath .
         Rename-Item -Path "AMF-master" -NewName "amf"
+        if (Test-Path "amf\amf\public\include") {
+          Copy-Item "amf\amf\public\include\*" "${{ github.workspace }}\hardware-encoders\include\" -Recurse -Force
+        }
 
     - name: Clone FFmpeg
       run: |
         git clone --depth=1 https://github.com/FFmpeg/FFmpeg -b $env:FFMPEG_VERSION ffmpeg
 
-    - name: Configure FFmpeg for Hardware Encoders
+    - name: Configure and Build FFmpeg with MSVC
       run: |
         cd ffmpeg
         
-        # 设置MSYS2环境
-        $env:PATH = "C:\tools\msys64\usr\bin;C:\tools\msys64\mingw64\bin;$env:PATH"
+        # 设置MSYS2环境用于configure和make
+        $env:PATH = "C:\tools\msys64\usr\bin;$env:PATH"
         
-        # 设置硬件编码器环境变量
-        $env:NVCODEC_PATH = "${{ github.workspace }}/nvcodec"
-        $env:INTELMEDIASDKROOT = "${{ github.workspace }}/intel-media-sdk"  
-        $env:AMF_PATH = "${{ github.workspace }}/amf"
+        # 转换路径格式 
+        $workspace = (Get-Location).Path.Replace('\', '/').Replace('C:', '/c').Replace('D:', '/d').Replace('E:', '/e')
         
-        # 配置FFmpeg以启用硬件编码器
-        $workspace_unix = "${{ github.workspace }}".Replace('\', '/').Replace('C:', '/c')
-        C:\tools\msys64\usr\bin\bash.exe -lc "cd $workspace_unix/ffmpeg && ./configure --enable-shared --disable-static --enable-libx264 --enable-nvenc --enable-qsv --enable-amf --enable-cuda-nvcc --enable-cuvid --enable-d3d11va --enable-dxva2 --toolchain=msvc --arch=x86_64 --prefix=$workspace_unix/ffmpeg-output --extra-cflags='-I$workspace_unix/nvcodec/include -I$workspace_unix/intel-media-sdk/include -I$workspace_unix/amf/amf/public/include -I$workspace_unix/x264/include' --extra-ldflags='-L$workspace_unix/x264/lib/x64/Release -L/mingw64/lib' --extra-libs='-lx264'"
+        Write-Host "🔧 配置FFmpeg..."
+        
+        # FFmpeg configure - 使用MSVC工具链
+        bash -c "./configure --enable-shared --disable-static --enable-libx264 --enable-nvenc --enable-qsv --enable-amf --enable-cuda-nvcc --enable-cuvid --enable-d3d11va --enable-dxva2 --toolchain=msvc --target-os=win64 --arch=x86_64 --prefix=$workspace/../ffmpeg-output --extra-cflags='-I$workspace/../hardware-encoders/include -I$workspace/../x264/include' --extra-ldflags='-L$workspace/../x264/lib/x64/Release' --extra-libs='-lx264'"
+        
+        Write-Host "🔨 构建FFmpeg..."
+        bash -c "make -j4"
+        bash -c "make install"
 
-    - name: Build FFmpeg DLL (Release x64)
+    - name: Organize output and create build info
       run: |
-        cd ffmpeg
+        Write-Host "📦 整理输出文件..."
         
-        # 使用MSYS2环境构建
-        $workspace_unix = "${{ github.workspace }}".Replace('\', '/').Replace('C:', '/c')
+        # 创建更好的目录结构
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\ffmpeg-output\include\x264"
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\ffmpeg-output\include\hardware-encoders"
         
-        C:\tools\msys64\usr\bin\bash.exe -lc "cd $workspace_unix/ffmpeg && make -j4"
-        C:\tools\msys64\usr\bin\bash.exe -lc "cd $workspace_unix/ffmpeg && make install"
+        # 复制x264文件到子目录
+        if (Test-Path "x264\bin\x64\Release") {
+          Copy-Item "x264\bin\x64\Release\*" "${{ github.workspace }}\ffmpeg-output\bin\" -Force -Recurse -ErrorAction SilentlyContinue
+        }
+        if (Test-Path "x264\lib\x64\Release") {
+          Copy-Item "x264\lib\x64\Release\*" "${{ github.workspace }}\ffmpeg-output\lib\" -Force -Recurse -ErrorAction SilentlyContinue
+        }
+        if (Test-Path "x264\include") {
+          Copy-Item "x264\include\*" "${{ github.workspace }}\ffmpeg-output\include\x264\" -Force -Recurse -ErrorAction SilentlyContinue
+        }
+        
+        # 复制硬件编码器头文件到子目录
+        if (Test-Path "hardware-encoders\include") {
+          Copy-Item "hardware-encoders\include\*" "${{ github.workspace }}\ffmpeg-output\include\hardware-encoders\" -Force -Recurse -ErrorAction SilentlyContinue
+        }
+        
+        # 创建构建信息文件
+        $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+        $buildInfo = @"
+FFmpeg Build Information
+========================
+FFmpeg Version: 6.1
+Build Time: $buildTime
+Compiler: MSVC (Visual Studio 2022)
+Platform: Windows x64
+Architecture: x86_64
 
-    - name: Collect DLLs, LIBs, and headers
-      run: |
-        # FFmpeg文件已经安装到 ffmpeg-output 目录
-        # 复制x264库文件
-        xcopy /Y /S x264\bin\x64\Release\*.dll ${{ github.workspace }}\ffmpeg-output\bin\
-        xcopy /Y /S x264\lib\x64\Release\*.lib ${{ github.workspace }}\ffmpeg-output\lib\
-        xcopy /Y /S x264\include\* ${{ github.workspace }}\ffmpeg-output\include\
+Hardware Encoders:
+- ✅ NVIDIA NVENC (h264_nvenc) - NVIDIA GPU 硬件编码
+- ✅ Intel QSV (h264_qsv) - Intel Quick Sync Video  
+- ✅ AMD AMF (h264_amf) - AMD Media Framework
+- ✅ x264 (libx264) - 软件编码回退
+
+Additional Features:
+- CUDA acceleration
+- D3D11VA/DXVA2 hardware decoding
+- Shared libraries (.dll)
+- MSVC-compatible import libraries (.lib)
+
+Directory Structure:
+├── bin/          # DLL files
+├── lib/          # Import libraries (.lib)
+└── include/      # Header files
+    ├── ffmpeg/   # FFmpeg headers
+    ├── x264/     # x264 headers  
+    └── hardware-encoders/ # Hardware encoder headers
+
+Usage:
+Link against the .lib files and ensure .dll files are in your PATH.
+"@
         
-        # 复制硬件编码器头文件
-        xcopy /Y /S nvcodec\include\* ${{ github.workspace }}\ffmpeg-output\include\
-        xcopy /Y /S intel-media-sdk\include\* ${{ github.workspace }}\ffmpeg-output\include\
-        xcopy /Y /S amf\amf\public\include\* ${{ github.workspace }}\ffmpeg-output\include\
+        $buildInfo | Out-File -FilePath "${{ github.workspace }}\ffmpeg-output\build-info.txt" -Encoding UTF8
+        
+        Write-Host "✅ 构建完成！"
 
     - name: Archive build
       run: |

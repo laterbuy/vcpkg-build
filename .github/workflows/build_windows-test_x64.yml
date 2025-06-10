@@ -20,11 +20,8 @@ jobs:
       with:
         msystem: MINGW64
         install: >-
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-binutils
+          mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-pkg-config
-          mingw-w64-x86_64-make
-          mingw-w64-x86_64-diffutils
           mingw-w64-x86_64-nasm
           mingw-w64-x86_64-yasm
           make
@@ -42,6 +39,17 @@ jobs:
           mingw-w64-x86_64-libvorbis \
           mingw-w64-x86_64-opus
           
+    - name: Verify toolchain
+      shell: msys2 {0}
+      run: |
+        echo "Checking toolchain installation..."
+        which x86_64-w64-mingw32-gcc || echo "gcc not found"
+        which x86_64-w64-mingw32-ar || echo "ar not found"
+        which x86_64-w64-mingw32-nm || echo "nm not found"
+        which x86_64-w64-mingw32-ranlib || echo "ranlib not found"
+        echo "PATH: $PATH"
+        ls -la /mingw64/bin/x86_64-w64-mingw32-* || echo "toolchain binaries not found"
+        
     - name: Download FFmpeg source
       shell: msys2 {0}
       run: |
@@ -53,6 +61,10 @@ jobs:
       run: |
         cd ffmpeg
         export PATH="/mingw64/bin:$PATH"
+        export AR="x86_64-w64-mingw32-ar"
+        export NM="x86_64-w64-mingw32-nm"
+        export RANLIB="x86_64-w64-mingw32-ranlib"
+        export STRIP="x86_64-w64-mingw32-strip"
         ./configure \
           --prefix=/mingw64 \
           --arch=x86_64 \
@@ -111,6 +123,10 @@ jobs:
       run: |
         cd ffmpeg
         export PATH="/mingw64/bin:$PATH"
+        export AR="x86_64-w64-mingw32-ar"
+        export NM="x86_64-w64-mingw32-nm"
+        export RANLIB="x86_64-w64-mingw32-ranlib"
+        export STRIP="x86_64-w64-mingw32-strip"
         make -j$(nproc)
         make install DESTDIR=/tmp/ffmpeg-install
         
@@ -122,13 +138,15 @@ jobs:
         mkdir -p ffmpeg-windows-h264/lib
         mkdir -p ffmpeg-windows-h264/include
         
-        # Copy DLL files
-        cp /tmp/ffmpeg-install/mingw64/bin/*.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/avcodec-*.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/avformat-*.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/avutil-*.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/swscale-*.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/swresample-*.dll ffmpeg-windows-h264/bin/ || true
+        # Copy DLL files from build output
+        cp /tmp/ffmpeg-install/mingw64/bin/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        
+        # If DLLs are built in the source directory
+        cp ffmpeg/libavcodec/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libavformat/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libavutil/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libswscale/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp ffmpeg/libswresample/*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Copy lib files
         cp /tmp/ffmpeg-install/mingw64/lib/*.dll.a ffmpeg-windows-h264/lib/ || true
@@ -178,12 +196,19 @@ jobs:
         path: ffmpeg-windows-h264/
         retention-days: 30
         
+    - name: Create zip for release
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: msys2 {0}
+      run: |
+        cd ffmpeg-windows-h264
+        zip -r ../ffmpeg-windows-h264.zip .
+        cd ..
+        
     - name: Create release on tag
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          ffmpeg-windows-h264.zip
+        files: ffmpeg-windows-h264.zip
         draft: false
         prerelease: false
       env:

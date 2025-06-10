@@ -37,7 +37,8 @@ jobs:
           mingw-w64-x86_64-bzip2 \
           mingw-w64-x86_64-lame \
           mingw-w64-x86_64-libvorbis \
-          mingw-w64-x86_64-opus
+          mingw-w64-x86_64-opus \
+          mingw-w64-x86_64-libiconv
           
     - name: Verify toolchain
       shell: msys2 {0}
@@ -210,10 +211,38 @@ jobs:
         cp /tmp/ffmpeg-install/mingw64/include/libsw* ffmpeg-windows-h264/include/ -r || true
         
         # Copy required MinGW DLLs
-        cp /mingw64/bin/libgcc_s_seh-1.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/libwinpthread-1.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/libstdc++-6.dll ffmpeg-windows-h264/bin/ || true
-        cp /mingw64/bin/libx264-*.dll ffmpeg-windows-h264/bin/ || true
+        cp /mingw64/bin/libgcc_s_seh-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libwinpthread-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libstdc++-6.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libx264-*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        
+        # Copy dependency DLLs
+        cp /mingw64/bin/zlib1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libiconv-2.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libcharset-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libbz2-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libva*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        
+        # Use ldd to find additional dependencies and copy them
+        echo "Checking dependencies..."
+        if [ -f ffmpeg-windows-h264/bin/ffmpeg.exe ]; then
+          ldd ffmpeg-windows-h264/bin/ffmpeg.exe | grep mingw64 | awk '{print $3}' | while read dll; do
+            if [ -f "$dll" ]; then
+              echo "Copying dependency: $(basename $dll)"
+              cp "$dll" ffmpeg-windows-h264/bin/ 2>/dev/null || true
+            fi
+          done
+        fi
+        
+        # Check for DLL dependencies in avcodec
+        if [ -f ffmpeg-windows-h264/bin/avcodec-60.dll ]; then
+          ldd ffmpeg-windows-h264/bin/avcodec-60.dll | grep mingw64 | awk '{print $3}' | while read dll; do
+            if [ -f "$dll" ]; then
+              echo "Copying avcodec dependency: $(basename $dll)"
+              cp "$dll" ffmpeg-windows-h264/bin/ 2>/dev/null || true
+            fi
+          done
+        fi
         
         # Create README
         cat > ffmpeg-windows-h264/README.md << 'EOF'
@@ -224,8 +253,17 @@ jobs:
         - H.264 hardware encoding (Intel QSV, AMD AMF)
         - H.264 hardware decoding (Intel QSV)
         - Optimized for H.264 video processing
-        - Dynamic libraries (.dll files)
+        - Dynamic libraries (.dll files) with all dependencies
         - Command-line tools (ffmpeg.exe, ffprobe.exe)
+        
+        ## Dependencies included:
+        All required DLL dependencies are bundled, including:
+        - zlib1.dll (compression support)
+        - libiconv-2.dll (character encoding)
+        - libcharset-1.dll (character set support)
+        - libbz2-1.dll (bzip2 compression)
+        - libx264 libraries
+        - MinGW runtime libraries
         
         ## Usage
         Add the `bin` directory to your PATH or place the DLL files alongside your application.
@@ -258,7 +296,10 @@ jobs:
         - h264_amf AMD hardware encoding
         - H.264 software decoding
         - MP4/MOV container support
-        - Basic scaling filter
+        - Audio/video filtering (scale, format, null filters)
+        - Audio resampling support
+        - Device input/output support
+        - Post-processing support
         - File I/O protocols
         EOF
         

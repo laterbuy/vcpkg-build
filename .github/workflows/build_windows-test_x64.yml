@@ -38,7 +38,8 @@ jobs:
           mingw-w64-x86_64-lame \
           mingw-w64-x86_64-libvorbis \
           mingw-w64-x86_64-opus \
-          mingw-w64-x86_64-libiconv
+          mingw-w64-x86_64-libiconv \
+          mingw-w64-x86_64-intel-media-sdk
           
     - name: Verify toolchain
       shell: msys2 {0}
@@ -67,6 +68,15 @@ jobs:
         echo "=== Testing native tools ==="
         /mingw64/bin/gcc --version || echo "native gcc failed"
         /mingw64/bin/ar --version || echo "native ar failed"
+
+    - name: Download AMD AMF headers
+      shell: msys2 {0}
+      run: |
+        # Download AMD AMF SDK headers
+        wget -q https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/v1.4.29.tar.gz
+        tar -xzf v1.4.29.tar.gz
+        mkdir -p /mingw64/include/AMF
+        cp -r AMF-1.4.29/amf/public/include/* /mingw64/include/AMF/
         
     - name: Download FFmpeg source
       shell: msys2 {0}
@@ -136,11 +146,13 @@ jobs:
           --enable-filter=anull \
           --enable-filter=format \
           --enable-libx264 \
+          --enable-libmfx \
+          --enable-amf \
           --enable-gpl \
           --enable-version3 \
           --enable-nonfree \
           --enable-runtime-cpudetect \
-          --extra-cflags="-O3" \
+          --extra-cflags="-O3 -I/mingw64/include/AMF" \
           --extra-ldflags="-static-libgcc -static-libstdc++"
           
     - name: Build FFmpeg
@@ -222,15 +234,29 @@ jobs:
         cp /mingw64/bin/libcharset-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /mingw64/bin/libbz2-1.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /mingw64/bin/libva*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+        cp /mingw64/bin/libmfx*.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         
         # Copy additional dependencies that might be needed
         echo "Copying additional dependencies..."
         cp /mingw64/bin/msys-2.0.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
         cp /mingw64/bin/libintl-8.dll ffmpeg-windows-h264/bin/ 2>/dev/null || true
+
+
+        # Verify hardware encoders are available
+        echo "Verifying hardware encoders..."
+        if [ -f ffmpeg-windows-h264/bin/ffmpeg.exe ]; then
+          echo "Available encoders:"
+          ./ffmpeg-windows-h264/bin/ffmpeg.exe -encoders 2>/dev/null | grep h264 || echo "No h264 encoders found"
+          echo "Checking for QSV support:"
+          ./ffmpeg-windows-h264/bin/ffmpeg.exe -encoders 2>/dev/null | grep qsv || echo "QSV not available"
+          echo "Checking for AMF support:"
+ 
         
         # Create README
         cat > ffmpeg-windows-h264/README.md << 'EOF'
         # FFmpeg Windows H.264 Build
+
+        
         
         This build includes:
         - H.264 software encoding via libx264
@@ -248,6 +274,12 @@ jobs:
         - libbz2-1.dll (bzip2 compression)
         - libx264 libraries
         - MinGW runtime libraries
+        - libmfx libraries (Intel Media SDK for QSV)
+
+        ## Hardware Requirements:
+        - **Intel QSV**: Requires Intel CPU with Quick Sync Video (8th gen or newer) or Intel integrated graphics
+        - **AMD AMF**: Requires AMD Radeon graphics card (RX 400 series or newer)
+        - **Software encoding**: Works on any CPU
         
         ## Usage
         Add the `bin` directory to your PATH or place the DLL files alongside your application.
